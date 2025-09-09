@@ -344,6 +344,8 @@ export default function Home() {
           onSendMessage={handleSendMessage}
           disabled={isLoading}
           placeholder="Type your message..."
+          hasActiveConversation={Boolean(currentConversation)}
+          onEnsureConversation={handleNewChat}
         />
       </div>
     </div>

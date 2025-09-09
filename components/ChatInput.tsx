@@ -7,12 +7,16 @@ interface ChatInputProps {
   onSendMessage: (content: string, images?: string[]) => void;
   disabled?: boolean;
   placeholder?: string;
+  hasActiveConversation?: boolean;
+  onEnsureConversation?: () => void;
 }
 
 export default function ChatInput({ 
   onSendMessage, 
   disabled = false, 
-  placeholder = "Type your message..." 
+  placeholder = "Type your message...",
+  hasActiveConversation = true,
+  onEnsureConversation,
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
   const [images, setImages] = useState<string[]>([]);
@@ -39,14 +43,19 @@ export default function ChatInput({
   }, [handleSubmit]);
 
   const handleTextareaChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setMessage(e.target.value);
+    const nextValue = e.target.value;
+    // If user starts typing and no active conversation exists, ensure one is created
+    if (!message && nextValue.trim().length > 0 && !hasActiveConversation) {
+      onEnsureConversation?.();
+    }
+    setMessage(nextValue);
     
     // Auto-resize textarea
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
       textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`;
     }
-  }, []);
+  }, [message, hasActiveConversation, onEnsureConversation]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
