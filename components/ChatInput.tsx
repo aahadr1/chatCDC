@@ -2,8 +2,6 @@
 
 import React, { useState, useRef, useCallback } from 'react';
 import { Send, Paperclip, Image as ImageIcon, X } from 'lucide-react';
-import { supabase } from '@/lib/supabaseClient';
-import { v4 as uuidv4 } from 'uuid';
 
 interface ChatInputProps {
   onSendMessage: (content: string, images?: string[]) => void;
@@ -17,42 +15,21 @@ export default function ChatInput({
   placeholder = "Type your message..." 
 }: ChatInputProps) {
   const [message, setMessage] = useState('');
-  const [images, setImages] = useState<string[]>([]); // preview URLs
-  const [files, setFiles] = useState<File[]>([]);
+  const [images, setImages] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSubmit = useCallback(async (e: React.FormEvent) => {
+  const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() && files.length === 0) return;
-
-    // Upload files to Supabase Storage and collect public URLs
-    let uploadedUrls: string[] | undefined = undefined;
-    if (files.length > 0) {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData?.user?.id;
-      if (!userId) return;
-
-      const bucket = supabase.storage.from('chatcdc');
-      const uploads = await Promise.all(
-        files.map(async (file, idx) => {
-          const path = `${userId}/${Date.now()}-${idx}-${uuidv4()}-${file.name}`;
-          const { error } = await bucket.upload(path, file, { upsert: false });
-          if (error) throw error;
-          const { data } = bucket.getPublicUrl(path);
-          return data.publicUrl;
-        })
-      );
-      uploadedUrls = uploads;
+    if (message.trim() || images.length > 0) {
+      onSendMessage(message.trim(), images.length > 0 ? images : undefined);
+      setMessage('');
+      setImages([]);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = 'auto';
+      }
     }
-
-    onSendMessage(message.trim(), uploadedUrls);
-
-    setMessage('');
-    setImages([]);
-    setFiles([]);
-    if (textareaRef.current) textareaRef.current.style.height = 'auto';
-  }, [message, files, onSendMessage]);
+  }, [message, images, onSendMessage]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -72,19 +49,28 @@ export default function ChatInput({
   }, []);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const selected = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'))
-    if (selected.length === 0) return;
-
-    setFiles(prev => [...prev, ...selected]);
-    const previews = selected.map(file => URL.createObjectURL(file));
-    setImages(prev => [...prev, ...previews]);
-
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    const files = Array.from(e.target.files || []);
+    
+    files.forEach(file => {
+      if (file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setImages(prev => [...prev, event.target!.result as string]);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+    
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   }, []);
 
   const removeImage = useCallback((index: number) => {
     setImages(prev => prev.filter((_, i) => i !== index));
-    setFiles(prev => prev.filter((_, i) => i !== index));
   }, []);
 
   return (
