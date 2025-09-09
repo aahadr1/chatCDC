@@ -4,14 +4,29 @@ import { useEffect, useMemo, useState } from 'react'
 import { Auth } from '@supabase/auth-ui-react'
 import { ThemeSupa } from '@supabase/auth-ui-shared'
 import { createBrowserSupabaseClient } from '@/lib/supabaseClient'
+import { useRouter, useSearchParams } from 'next/navigation'
 
 export default function LoginPage() {
   const [supabaseReady, setSupabaseReady] = useState(false)
   const supabase = useMemo(() => createBrowserSupabaseClient(), [])
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   useEffect(() => {
     setSupabaseReady(Boolean(supabase))
   }, [supabase])
+
+  useEffect(() => {
+    if (!supabase) return
+    const check = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const redirectedFrom = searchParams.get('redirectedFrom') || '/'
+        router.replace(redirectedFrom)
+      }
+    }
+    check()
+  }, [supabase, router, searchParams])
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-apple-gray-50 p-6">

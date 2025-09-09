@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createBrowserSupabaseClient } from '@/lib/supabaseClient';
+import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
 
 async function extractTextFromPDF(file: File): Promise<string> {
   try {
@@ -26,13 +27,7 @@ export async function POST(
   { params }: { params: { projectId: string } }
 ) {
   try {
-    const supabase = createBrowserSupabaseClient();
-    if (!supabase) {
-      return NextResponse.json(
-        { error: 'Supabase not configured' },
-        { status: 500 }
-      );
-    }
+    const supabase = createRouteHandlerClient({ cookies });
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
