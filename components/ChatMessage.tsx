@@ -36,15 +36,18 @@ export default function ChatMessage({
     );
   }
 
-  const markdownComponents: Components = {
-    code({ inline, children, ...props }) {
+  const markdownComponents = {
+    // on tape le paramètre en any pour récupérer "inline"
+    code({ node, inline, className, children, ...props }: any) {
       return inline ? (
         <code className="bg-apple-gray-200 px-1 py-0.5 rounded text-sm" {...props}>
           {children}
         </code>
       ) : (
-        <pre className="bg-apple-gray-800 text-white p-3 rounded-lg overflow-x-auto">
-          <code {...props}>{children}</code>
+        <pre className="overflow-auto rounded-lg p-3">
+          <code className={className} {...props}>
+            {children}
+          </code>
         </pre>
       );
     },
@@ -57,7 +60,7 @@ export default function ChatMessage({
         </div>
       );
     },
-  };
+  } satisfies Components;
 
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 group`}>
