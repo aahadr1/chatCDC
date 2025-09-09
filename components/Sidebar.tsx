@@ -1,6 +1,9 @@
 'use client';
 
 import React from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { createBrowserSupabaseClient } from '@/lib/supabaseClient';
 import { Conversation, ChatSettings } from '@/types/chat';
 import { 
   MessageSquare, 
@@ -35,6 +38,40 @@ export default function Sidebar({
 }: SidebarProps) {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editingTitle, setEditingTitle] = React.useState('');
+  const [projects, setProjects] = React.useState<Array<{ id: string; name: string }>>([]);
+  const [loadingProjects, setLoadingProjects] = React.useState(false);
+  const router = useRouter();
+
+  React.useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+    let isMounted = true;
+    setLoadingProjects(true);
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        if (isMounted) setProjects([]);
+        setLoadingProjects(false);
+        return;
+      }
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+      if (!isMounted) return;
+      if (error) {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to load projects', error.message);
+        setProjects([]);
+      } else {
+        setProjects(data || []);
+      }
+      setLoadingProjects(false);
+    })();
+
+    return () => { isMounted = false; };
+  }, []);
 
   const handleStartEdit = (conversation: Conversation) => {
     setEditingId(conversation.id);
@@ -87,6 +124,16 @@ export default function Sidebar({
           <Plus size={18} />
           New Chat
         </button>
+
+        <div className="mt-3">
+          <Link
+            href="/projects/new"
+            className="w-full btn-secondary flex items-center justify-center gap-2 py-3 block text-center"
+          >
+            <Plus size={18} />
+            New Project
+          </Link>
+        </div>
       </div>
 
       {/* Conversations List */}
@@ -166,6 +213,28 @@ export default function Sidebar({
                 )}
               </div>
             ))
+          )}
+        </div>
+
+        {/* Projects Section */}
+        <div className="mt-6">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-apple-gray-500 mb-2">Projects</h2>
+          {loadingProjects ? (
+            <div className="text-xs text-apple-gray-500">Loading projects...</div>
+          ) : projects.length === 0 ? (
+            <div className="text-xs text-apple-gray-400">No projects yet</div>
+          ) : (
+            <div className="space-y-1">
+              {projects.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => router.push(`/projects/${p.id}`)}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-white hover:shadow-sm transition"
+                >
+                  <div className="text-sm font-medium text-apple-gray-900 truncate">{p.name}</div>
+                </button>
+              ))}
+            </div>
           )}
         </div>
       </div>
