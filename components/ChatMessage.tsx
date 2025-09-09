@@ -5,6 +5,7 @@ import { Message } from '@/types/chat';
 import { ThumbsUp, ThumbsDown, Copy, RotateCcw } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import type { Components } from 'react-markdown';
 
 interface ChatMessageProps {
   message: Message;
@@ -35,6 +36,29 @@ export default function ChatMessage({
     );
   }
 
+  const markdownComponents: Components = {
+    code({ inline, children, ...props }) {
+      return inline ? (
+        <code className="bg-apple-gray-200 px-1 py-0.5 rounded text-sm" {...props}>
+          {children}
+        </code>
+      ) : (
+        <pre className="bg-apple-gray-800 text-white p-3 rounded-lg overflow-x-auto">
+          <code {...props}>{children}</code>
+        </pre>
+      );
+    },
+    table({ children, ...props }) {
+      return (
+        <div className="overflow-x-auto">
+          <table className="min-w-full border-collapse" {...props}>
+            {children}
+          </table>
+        </div>
+      );
+    },
+  };
+
   return (
     <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-6 group`}>
       <div className={`message-bubble ${isUser ? 'user-message' : 'assistant-message'}`}>
@@ -60,26 +84,7 @@ export default function ChatMessage({
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               className="text-apple-gray-900 [&>*:first-child]:mt-0 [&>*:last-child]:mb-0"
-              components={{
-                code: ({ inline, children, ...props }) => (
-                  inline ? (
-                    <code className="bg-apple-gray-200 px-1 py-0.5 rounded text-sm" {...props}>
-                      {children}
-                    </code>
-                  ) : (
-                    <pre className="bg-apple-gray-800 text-white p-3 rounded-lg overflow-x-auto">
-                      <code {...props}>{children}</code>
-                    </pre>
-                  )
-                ),
-                table: ({ children, ...props }) => (
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full border-collapse" {...props}>
-                      {children}
-                    </table>
-                  </div>
-                ),
-              }}
+              components={markdownComponents}
             >
               {message.content}
             </ReactMarkdown>
