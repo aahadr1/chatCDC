@@ -91,14 +91,7 @@ export default function NewProjectPage() {
     onDrop,
     accept: {
       'application/pdf': ['.pdf'],
-      'application/msword': ['.doc'],
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'application/vnd.ms-excel': ['.xls'],
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-      'text/plain': ['.txt'],
-      'text/csv': ['.csv'],
-      'application/vnd.ms-powerpoint': ['.ppt'],
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx']
+      'image/*': ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.webp']
     },
     maxFiles: 20,
     maxSize: 50 * 1024 * 1024 // 50MB
@@ -369,7 +362,7 @@ export default function NewProjectPage() {
                     or click to browse files
                   </p>
                   <p className="text-sm text-gray-400">
-                    Supports PDF, Word, Excel, PowerPoint, TXT, CSV<br />
+                    Supports PDF and Images (PNG, JPG, GIF, BMP, TIFF, WebP)<br />
                     Max 20 files, 50MB each
                   </p>
                 </div>
