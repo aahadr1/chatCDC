@@ -25,12 +25,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Full name must be at least 2 characters' }, { status: 400 })
     }
 
-    // Check if user already exists
-    const { data: existingUser } = await supabaseAdmin.auth.admin.getUserByEmail(email)
-    if (existingUser.user) {
-      return NextResponse.json({ error: 'User already exists with this email' }, { status: 409 })
-    }
-
     // Create user
     const { data, error } = await supabaseAdmin.auth.signUp({
       email,
@@ -45,6 +39,14 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Sign up error:', error.message)
+      
+      // Check if user already exists
+      if (error.message.includes('already registered') || error.message.includes('already exists')) {
+        return NextResponse.json({ 
+          error: 'User already exists with this email' 
+        }, { status: 409 })
+      }
+      
       return NextResponse.json({ 
         error: 'Failed to create account' 
       }, { status: 400 })
