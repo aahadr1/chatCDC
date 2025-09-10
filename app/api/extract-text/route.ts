@@ -56,11 +56,34 @@ export async function POST(request: NextRequest) {
       .update({ processing_status: 'processing' })
       .eq('id', documentId)
 
-    // Call Dolphin with direct file URL
+    // Resolve an accessible URL for the file (prefer signed URL from storage)
     let extractedText = ''
+    let accessibleUrl = fileUrl as string
     try {
-      const input = { file: fileUrl, output_format: 'markdown_content' as const }
-      const output: unknown = await replicate.run(DOLPHIN_MODEL_ID, { input })
+      // Look up storage path by document id
+      const { data: docRow } = await supabaseAdmin
+        .from('project_documents')
+        .select('filename')
+        .eq('id', documentId)
+        .single()
+
+      if (docRow?.filename) {
+        const { data: signed, error: signErr } = await supabaseAdmin
+          .storage
+          .from('project-documents')
+          .createSignedUrl(docRow.filename, 60 * 10) // 10 minutes
+        if (!signErr && signed?.signedUrl) {
+          accessibleUrl = signed.signedUrl
+        }
+      }
+
+      const input = { file: accessibleUrl, output_format: 'markdown_content' as const }
+      // Add a hard timeout to avoid indefinite processing
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Dolphin timeout')), 2 * 60 * 1000))
+      const output: unknown = await Promise.race([
+        replicate.run(DOLPHIN_MODEL_ID, { input }),
+        timeout
+      ])
 
       if (typeof output === 'string') {
         extractedText = output.trim()
