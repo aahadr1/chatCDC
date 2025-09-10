@@ -27,6 +27,17 @@ export async function POST(request: NextRequest) {
 
     // Create a streaming response
     const encoder = new TextEncoder()
+    const normalizeToText = (chunk: any): string => {
+      if (chunk == null) return ''
+      if (typeof chunk === 'string') return chunk
+      if (typeof chunk === 'object') {
+        if (typeof (chunk as any).content === 'string') return (chunk as any).content
+        if (typeof (chunk as any).text === 'string') return (chunk as any).text
+        if (typeof (chunk as any).output === 'string') return (chunk as any).output
+        try { return JSON.stringify(chunk) } catch { return String(chunk) }
+      }
+      return String(chunk)
+    }
     const stream = new ReadableStream({
       async start(controller) {
         try {
@@ -47,9 +58,8 @@ export async function POST(request: NextRequest) {
           const stream = await replicate.stream("openai/gpt-5", { input })
 
           for await (const event of stream) {
-            if (event) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: event })}\n\n`))
-            }
+            const text = normalizeToText(event)
+            if (text) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`))
           }
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
@@ -75,9 +85,8 @@ export async function POST(request: NextRequest) {
             })
 
             for await (const event of fallbackStream) {
-              if (event) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: event })}\n\n`))
-              }
+              const text = normalizeToText(event)
+              if (text) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`))
             }
 
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
