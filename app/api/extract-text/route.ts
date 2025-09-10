@@ -7,8 +7,11 @@ const DOLPHIN_MODEL_ID = 'bytedance/dolphin:19f1ad93970c2bf21442a842d01d97fb04a9
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('📝 Extract text API called')
+    
     // Validate server configuration
     if (!process.env.REPLICATE_API_TOKEN) {
+      console.error('❌ REPLICATE_API_TOKEN not configured')
       return NextResponse.json({ error: 'Server misconfiguration: REPLICATE_API_TOKEN is not set' }, { status: 500 })
     }
 
@@ -35,7 +38,10 @@ export async function POST(request: NextRequest) {
       fileType: string
     }
 
+    console.log('📄 Processing file:', { fileName, fileType, documentId })
+
     if (!documentId || !projectId || !fileUrl || !fileName || !fileType) {
+      console.error('❌ Missing required fields')
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
@@ -78,12 +84,18 @@ export async function POST(request: NextRequest) {
       }
 
       const input = { file: accessibleUrl, output_format: 'markdown_content' as const }
+      console.log('🚀 Calling Dolphin with input:', { file: accessibleUrl, output_format: 'markdown_content' })
+      
       // Add a hard timeout to avoid indefinite processing
-      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Dolphin timeout')), 2 * 60 * 1000))
-      const output: unknown = await Promise.race([
-        replicate.run(DOLPHIN_MODEL_ID, { input }),
-        timeout
-      ])
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Dolphin timeout after 2 minutes')), 2 * 60 * 1000))
+      
+      try {
+        const output: unknown = await Promise.race([
+          replicate.run(DOLPHIN_MODEL_ID, { input }),
+          timeout
+        ])
+        
+        console.log('📄 Dolphin response received:', typeof output, output)
 
       if (typeof output === 'string') {
         extractedText = output.trim()
@@ -98,10 +110,24 @@ export async function POST(request: NextRequest) {
       // Minimal cleanup while preserving structure
       extractedText = extractedText.replace(/\s+$/g, '').trim()
 
-      if (!extractedText || extractedText.length < 5) {
-        throw new Error('Empty extraction result')
+        if (!extractedText || extractedText.length < 5) {
+          throw new Error('Empty extraction result')
+        }
+        
+        console.log('✅ Text extraction successful:', extractedText.length, 'characters')
+        
+      } catch (dolphinError) {
+        console.error('❌ Dolphin extraction error:', dolphinError)
+        throw dolphinError
       }
+      
     } catch (err) {
+      console.error('❌ Text extraction failed:', err)
+      console.error('Error details:', {
+        message: err instanceof Error ? err.message : 'Unknown error',
+        stack: err instanceof Error ? err.stack : undefined
+      })
+      
       // Mark failed and return
       await supabaseAdmin
         .from('project_documents')
