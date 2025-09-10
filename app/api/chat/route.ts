@@ -29,29 +29,62 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder()
     const normalizeToText = (chunk: any): string => {
       if (chunk == null) return ''
-      // If it's a JSON string like {"event":"output","data":"Hi"}, extract the data
+      // String events may contain one or more concatenated JSON objects
       if (typeof chunk === 'string') {
-        const trimmed = chunk.trim()
-        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-          try {
-            const obj = JSON.parse(trimmed)
-            // Replicate event format
-            if (obj && typeof obj === 'object' && 'event' in obj) {
-              if (obj.event === 'output' && typeof obj.data === 'string') return obj.data
-              // ignore done/null/other events
-              return ''
+        const resultParts: string[] = []
+        let i = 0
+        let depth = 0
+        let inString = false
+        let escape = false
+        let start = -1
+        const s = chunk
+        while (i < s.length) {
+          const ch = s[i]
+          if (inString) {
+            if (escape) {
+              escape = false
+            } else if (ch === '\\') {
+              escape = true
+            } else if (ch === '"') {
+              inString = false
             }
-            // If it parsed but isn't an event, stringify fallback
-            if (typeof obj?.content === 'string') return obj.content
-            if (typeof obj?.text === 'string') return obj.text
-            if (typeof obj?.output === 'string') return obj.output
-            return ''
-          } catch {
-            // Not JSON, treat as plain text
-            return chunk
+            i++
+            continue
           }
+          if (ch === '"') {
+            inString = true
+          } else if (ch === '{') {
+            if (depth === 0) start = i
+            depth++
+          } else if (ch === '}') {
+            depth--
+            if (depth === 0 && start >= 0) {
+              const jsonStr = s.slice(start, i + 1)
+              try {
+                const obj = JSON.parse(jsonStr)
+                if (obj && typeof obj === 'object' && 'event' in obj) {
+                  if (obj.event === 'output' && typeof obj.data === 'string') {
+                    resultParts.push(obj.data)
+                  }
+                } else if (typeof obj?.content === 'string') {
+                  resultParts.push(obj.content)
+                } else if (typeof obj?.text === 'string') {
+                  resultParts.push(obj.text)
+                } else if (typeof obj?.output === 'string') {
+                  resultParts.push(obj.output)
+                }
+              } catch {
+                // ignore malformed JSON fragments
+              }
+              start = -1
+            }
+          }
+          i++
         }
-        return chunk
+        // If we extracted any outputs from JSON, return them; otherwise treat as plain text
+        const joined = resultParts.join('')
+        if (joined) return joined
+        return s
       }
       if (typeof chunk === 'object') {
         // Structured Replicate event
