@@ -4,6 +4,9 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN!,
 })
 
+// Replicate model name format: "owner/name" or "owner/name:tag"
+type ReplicateModelName = `${string}/${string}` | `${string}/${string}:${string}`
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -71,7 +74,7 @@ export async function* streamGPT5(
   console.log('GPT-5 Input Configuration:', JSON.stringify(input, null, 2))
 
   // Model priority list with fallback strategies
-  const modelFallbackList = [
+  const modelFallbackList: { name: ReplicateModelName; input: any; description: string }[] = [
     { 
       name: "openai/gpt-5", 
       input: input,
