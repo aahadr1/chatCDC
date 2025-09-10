@@ -91,8 +91,11 @@ export default function ProjectChatPage() {
   // Initialize user and load project data
   useEffect(() => {
     const initializeProject = async () => {
+      console.log('🚀 Initializing project page for projectId:', projectId)
+      
       const { user } = await getCurrentUser()
       if (user) {
+        console.log('✅ User authenticated:', user.id)
         setUser({
           id: user.id,
           email: user.email!
@@ -101,6 +104,7 @@ export default function ProjectChatPage() {
         await loadDocuments(user.id)
         await loadConversations(user.id)
       } else {
+        console.log('❌ No user found, redirecting to auth')
         router.push('/auth')
       }
     }
@@ -143,6 +147,8 @@ export default function ProjectChatPage() {
 
   const loadConversations = async (userId: string) => {
     try {
+      console.log('📋 Loading conversations for project:', projectId, 'user:', userId)
+      
       const { data: conversationsData, error } = await supabase
         .from('project_conversations')
         .select('*')
@@ -150,18 +156,25 @@ export default function ProjectChatPage() {
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error loading conversations:', error)
+        throw error
+      }
+
+      console.log('📋 Conversations loaded:', conversationsData?.length || 0)
 
       if (conversationsData && conversationsData.length > 0) {
         setConversations(conversationsData)
         setCurrentConversationId(conversationsData[0].id)
+        console.log('✅ Set current conversation:', conversationsData[0].id)
         await loadMessages(conversationsData[0].id)
       } else {
+        console.log('📝 No conversations found, creating new one')
         // Create default conversation if none exist
         await createNewConversation()
       }
     } catch (error) {
-      console.error('Error loading conversations:', error)
+      console.error('❌ Error loading conversations:', error)
     }
   }
 
@@ -190,9 +203,14 @@ export default function ProjectChatPage() {
   }
 
   const createNewConversation = async () => {
-    if (!user || !project) return
+    if (!user || !project) {
+      console.log('❌ Cannot create conversation - missing user or project:', { user: !!user, project: !!project })
+      return
+    }
 
     try {
+      console.log('📝 Creating new conversation for project:', projectId, 'user:', user.id)
+      
       const { data, error } = await supabase
         .from('project_conversations')
         .insert({
@@ -203,7 +221,12 @@ export default function ProjectChatPage() {
         .select()
         .single()
 
-      if (error) throw error
+      if (error) {
+        console.error('❌ Error creating conversation:', error)
+        throw error
+      }
+
+      console.log('✅ Conversation created:', data.id)
 
       const newConversation = {
         id: data.id,
@@ -215,8 +238,10 @@ export default function ProjectChatPage() {
       setConversations(prev => [newConversation, ...prev])
       setCurrentConversationId(newConversation.id)
       setMessages([])
+      
+      console.log('✅ Conversation state updated')
     } catch (error) {
-      console.error('Error creating conversation:', error)
+      console.error('❌ Error creating conversation:', error)
     }
   }
 
@@ -275,11 +300,30 @@ export default function ProjectChatPage() {
   }
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || loading || !currentConversationId || !user || !project) return
+    console.log('🔍 handleSendMessage called with:', {
+      inputMessage: inputMessage.trim(),
+      loading,
+      currentConversationId,
+      user: user?.id,
+      project: project?.id
+    })
+    
+    if (!inputMessage.trim() || loading || !currentConversationId || !user || !project) {
+      console.log('❌ Early return due to missing requirements:', {
+        hasInput: !!inputMessage.trim(),
+        notLoading: !loading,
+        hasConversation: !!currentConversationId,
+        hasUser: !!user,
+        hasProject: !!project
+      })
+      return
+    }
 
     const messageContent = inputMessage.trim()
     setInputMessage('')
     setLoading(true)
+    
+    console.log('✅ Starting message send process')
 
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -665,7 +709,15 @@ export default function ProjectChatPage() {
                     disabled={loading}
                   />
                   <button
-                    onClick={handleSendMessage}
+                    onClick={(e) => {
+                      console.log('🖱️ Send button clicked!', {
+                        loading,
+                        hasInput: !!inputMessage.trim(),
+                        disabled: loading || !inputMessage.trim()
+                      })
+                      e.preventDefault()
+                      handleSendMessage()
+                    }}
                     disabled={loading || !inputMessage.trim()}
                     className="absolute right-2 bottom-2 w-8 h-8 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-full flex items-center justify-center transition-colors"
                   >
