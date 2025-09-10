@@ -1,91 +1,86 @@
-import { NextResponse } from 'next/server';
-import type { NextRequest } from 'next/server';
-import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
+import { createServerClient } from '@supabase/ssr'
+import { NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next();
+  let response = NextResponse.next({
+    request: {
+      headers: req.headers,
+    },
+  })
 
-  const supabase = createMiddlewareClient({ req, res });
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return req.cookies.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          req.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: req.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+        },
+        remove(name: string, options: any) {
+          req.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: req.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+        },
+      },
+    }
+  )
+
   const {
-    data: { user },
-    error: userError
-  } = await supabase.auth.getUser();
+    data: { session },
+  } = await supabase.auth.getSession()
 
-  const { pathname, search } = req.nextUrl;
-  
-  // Controlled route configurations
-  const routes = {
-    protected: ['/chat', '/projects', '/settings', '/profile'],
-    auth: ['/login', '/signup', '/auth'],
-    public: ['/_next', '/static', '/favicon.ico', '/images']
-  };
-
-  // Check if the current path is a public asset
-  const isPublicAsset = routes.public.some(route => pathname.startsWith(route));
-  if (isPublicAsset) return res;
-
-  // Logging with reduced verbosity
-  const logRedirection = (type: string, details: Record<string, any> = {}) => {
-    console.log(`Middleware Redirection - ${type}`, {
-      path: pathname,
-      timestamp: new Date().toISOString(),
-      ...details
-    });
-  };
-
-  // Protected routes require authentication
-  const isProtectedRoute = routes.protected.some(route => pathname.startsWith(route));
-  if (isProtectedRoute) {
-    if (!user) {
-      logRedirection('UNAUTHORIZED_ACCESS', { 
-        attemptedPath: pathname 
-      });
-      
-      const redirectUrl = req.nextUrl.clone();
-      redirectUrl.pathname = '/login';
-      redirectUrl.searchParams.set('redirectedFrom', pathname + (search || ''));
-      
-      return NextResponse.redirect(redirectUrl);
-    }
+  // If user is not signed in and the current path is not the login page, redirect to login
+  if (!session && req.nextUrl.pathname !== '/login') {
+    return NextResponse.redirect(new URL('/login', req.url))
   }
 
-  // Authentication routes handling
-  const isAuthRoute = routes.auth.some(route => pathname.startsWith(route));
-  if (isAuthRoute && user) {
-    const dest = req.nextUrl.searchParams.get('redirectedFrom') || '/chat';
-    
-    logRedirection('AUTHENTICATED_USER_ON_AUTH_ROUTE', { 
-      destination: dest 
-    });
-
-    const redirectUrl = req.nextUrl.clone();
-    redirectUrl.pathname = dest;
-    redirectUrl.search = '';
-
-    return NextResponse.redirect(redirectUrl);
+  // If user is signed in and trying to access login page, redirect to chat
+  if (session && req.nextUrl.pathname === '/login') {
+    return NextResponse.redirect(new URL('/chat', req.url))
   }
 
-  // Home route special handling
-  if (pathname === '/') {
-    if (user) {
-      logRedirection('HOME_ROUTE_AUTHENTICATED', { 
-        destination: '/chat' 
-      });
-      
-      const redirectUrl = req.nextUrl.clone();
-      redirectUrl.pathname = '/chat';
-      return NextResponse.redirect(redirectUrl);
-    }
-  }
-
-  return res;
+  return response
 }
 
 export const config = {
   matcher: [
-    // Run on all routes except these file types and paths
-    '/((?!api/|_next/|_vercel/|.*\..*).*)',
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
-};
-
-
+}

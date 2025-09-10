@@ -1,69 +1,124 @@
-# Authentication Setup Guide for ChatCDC
+# ChatCDC Authentication Setup
 
-## Important: Supabase Configuration
+This guide will help you set up Supabase authentication for ChatCDC.
 
-### 1. Update Redirect URLs in Supabase Dashboard
+## Prerequisites
 
-Go to your Supabase project dashboard:
-1. Navigate to **Authentication** → **URL Configuration**
-2. Update the following settings:
+1. A Supabase account and project
+2. Node.js and npm installed
 
-**Site URL:**
-- For local development: `http://localhost:3000`
-- For production: `https://your-domain.com`
+## Setup Steps
 
-**Redirect URLs (add all of these):**
-```
-http://localhost:3000/auth/callback
-http://localhost:3000
-https://your-production-domain.com/auth/callback
-https://your-production-domain.com
+### 1. Install Dependencies
+
+```bash
+npm install
 ```
 
-### 2. Email Templates
+### 2. Supabase Project Setup
 
-In Supabase Dashboard:
-1. Go to **Authentication** → **Email Templates**
-2. Update the **Confirm signup** template
-3. Make sure the confirmation URL uses: `{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=signup`
+1. Go to [Supabase Dashboard](https://supabase.com/dashboard)
+2. Create a new project or use an existing one
+3. Go to Settings > API to get your project credentials
 
 ### 3. Environment Variables
 
-Make sure your `.env.local` file has:
+Create a `.env.local` file in the root directory with the following variables:
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 ```
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+
+Replace the values with your actual Supabase project credentials.
+
+### 4. Database Schema
+
+Run the SQL script in `supabase_schema.sql` in your Supabase SQL editor:
+
+1. Go to your Supabase project dashboard
+2. Navigate to SQL Editor
+3. Copy and paste the contents of `supabase_schema.sql`
+4. Execute the script
+
+This will create:
+- User profiles table
+- Conversations table
+- Messages table
+- Documents table
+- Row Level Security (RLS) policies
+- Storage bucket for file uploads
+
+### 5. Authentication Configuration
+
+In your Supabase project:
+
+1. Go to Authentication > Settings
+2. Configure your site URL (e.g., `http://localhost:3000` for development)
+3. Add redirect URLs:
+   - `http://localhost:3000/auth/callback` (development)
+   - `https://yourdomain.com/auth/callback` (production)
+
+### 6. Run the Application
+
+```bash
+npm run dev
 ```
 
-## How the Authentication Flow Works
+The application will be available at `http://localhost:3000`
 
-1. **User signs up** → Email sent with confirmation link
-2. **User clicks confirmation link** → Redirected to `/auth/callback`
-3. **Auth callback route** → Exchanges code for session
-4. **Automatic redirect** → User sent to home page
-5. **Login page** → Automatically redirects if already authenticated
+## Features
 
-## Testing the Flow
+- **Secure Authentication**: Email/password sign-up and sign-in
+- **Protected Routes**: Middleware automatically redirects unauthenticated users
+- **User Profiles**: Automatic profile creation on signup
+- **Conversations**: Server-side storage of chat conversations
+- **Messages**: Secure message storage with RLS
+- **File Uploads**: Document storage with proper access controls
+- **Modern UI**: Beautiful, responsive authentication interface
 
-1. Sign up with a new email
-2. Check your email for the confirmation link
-3. Click the link - you should be redirected to the app
-4. You should see your email in the sidebar
-5. Try refreshing - you should stay logged in
+## Security Features
+
+- Row Level Security (RLS) ensures users can only access their own data
+- Server-side data storage with proper access controls
+- Secure file uploads with user-specific storage paths
+- Automatic session management and refresh
+
+## File Structure
+
+```
+app/
+├── (auth)/
+│   └── login/
+│       └── page.tsx          # Authentication page
+├── auth/
+│   └── callback/
+│       └── route.ts          # Auth callback handler
+├── chat/
+│   └── page.tsx              # Main chat interface
+├── layout.tsx                # Root layout
+└── page.tsx                  # Home page (redirects to login)
+
+lib/
+├── supabaseClient.ts         # Client-side Supabase client
+└── supabaseAdmin.ts          # Server-side Supabase client
+
+middleware.ts                 # Route protection middleware
+supabase_schema.sql          # Database schema
+```
 
 ## Troubleshooting
 
-### User stays on login page after confirmation:
-- Check Supabase redirect URLs configuration
-- Ensure `/auth/callback` route is working
-- Check browser console for errors
+### Common Issues
 
-### "Invalid authentication" errors:
-- Clear browser cookies
-- Check environment variables
-- Verify Supabase project is active
+1. **Authentication not working**: Check your environment variables and Supabase project settings
+2. **Database errors**: Ensure the SQL schema has been executed successfully
+3. **Redirect loops**: Verify your redirect URLs in Supabase settings
+4. **RLS errors**: Check that Row Level Security policies are properly configured
 
-### Email not received:
-- Check spam folder
-- Verify email settings in Supabase
-- Check Supabase email logs
+### Getting Help
+
+- Check the Supabase documentation: https://supabase.com/docs
+- Verify your project settings in the Supabase dashboard
+- Check the browser console for any error messages

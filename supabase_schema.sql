@@ -1,233 +1,197 @@
--- Supabase SQL Schema for ChatCDC Project Feature
--- Run this in your Supabase SQL editor to create the necessary tables and policies
+-- Enable Row Level Security
+ALTER DATABASE postgres SET "app.jwt_secret" TO 'your-jwt-secret';
 
--- Enable Row Level Security (RLS)
--- This should already be enabled by default in Supabase
+-- Create custom types
+CREATE TYPE message_role AS ENUM ('user', 'assistant', 'system');
 
--- Create projects table
-CREATE TABLE IF NOT EXISTS public.projects (
+-- Create conversations table
+CREATE TABLE IF NOT EXISTS conversations (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    status VARCHAR(50) DEFAULT 'processing' CHECK (status IN ('processing', 'ready', 'error')),
-    extracted_text TEXT,
-    document_count INTEGER DEFAULT 0,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    title VARCHAR(255) NOT NULL DEFAULT 'New Conversation',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create project_documents table
-CREATE TABLE IF NOT EXISTS public.project_documents (
+-- Create messages table
+CREATE TABLE IF NOT EXISTS messages (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
-    filename VARCHAR(500) NOT NULL,
-    file_size BIGINT NOT NULL,
-    extracted_text TEXT,
-    processed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Create conversations table for main chat (non-project based)
-CREATE TABLE IF NOT EXISTS public.conversations (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
-    title VARCHAR(255) NOT NULL DEFAULT 'New Chat',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Create messages table for storing all chat messages
-CREATE TABLE IF NOT EXISTS public.messages (
-    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    conversation_id UUID REFERENCES public.conversations(id) ON DELETE CASCADE NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('user', 'assistant')),
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    role message_role NOT NULL,
     content TEXT NOT NULL,
-    images TEXT[], -- Array of base64 image strings
-    feedback VARCHAR(10) CHECK (feedback IN ('up', 'down')),
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create project_conversations table
-CREATE TABLE IF NOT EXISTS public.project_conversations (
+-- Create documents table for file uploads
+CREATE TABLE IF NOT EXISTS documents (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE NOT NULL,
-    user_message TEXT NOT NULL,
-    ai_response TEXT NOT NULL,
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    conversation_id UUID REFERENCES conversations(id) ON DELETE CASCADE,
+    filename VARCHAR(255) NOT NULL,
+    file_type VARCHAR(100) NOT NULL,
+    file_size INTEGER NOT NULL,
+    file_path TEXT NOT NULL,
+    content TEXT, -- Extracted text content
+    metadata JSONB DEFAULT '{}',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Enable Row Level Security on all tables
-ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.project_documents ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.project_conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.conversations ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-
--- RLS Policies for projects table
-CREATE POLICY "Users can view own projects" ON public.projects
-    FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own projects" ON public.projects
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own projects" ON public.projects
-    FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own projects" ON public.projects
-    FOR DELETE USING (auth.uid() = user_id);
-
--- RLS Policies for project_documents table
-CREATE POLICY "Users can view documents of own projects" ON public.project_documents
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_documents.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can insert documents to own projects" ON public.project_documents
-    FOR INSERT WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_documents.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can update documents of own projects" ON public.project_documents
-    FOR UPDATE USING (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_documents.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can delete documents of own projects" ON public.project_documents
-    FOR DELETE USING (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_documents.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
--- RLS Policies for conversations table
-CREATE POLICY "Users can view own conversations" ON public.conversations
-    FOR SELECT USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can insert own conversations" ON public.conversations
-    FOR INSERT WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own conversations" ON public.conversations
-    FOR UPDATE USING (auth.uid() = user_id);
-
-CREATE POLICY "Users can delete own conversations" ON public.conversations
-    FOR DELETE USING (auth.uid() = user_id);
-
--- RLS Policies for messages table
-CREATE POLICY "Users can view messages of own conversations" ON public.messages
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.conversations 
-            WHERE conversations.id = messages.conversation_id 
-            AND conversations.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can insert messages to own conversations" ON public.messages
-    FOR INSERT WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.conversations 
-            WHERE conversations.id = messages.conversation_id 
-            AND conversations.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can update messages of own conversations" ON public.messages
-    FOR UPDATE USING (
-        EXISTS (
-            SELECT 1 FROM public.conversations 
-            WHERE conversations.id = messages.conversation_id 
-            AND conversations.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can delete messages of own conversations" ON public.messages
-    FOR DELETE USING (
-        EXISTS (
-            SELECT 1 FROM public.conversations 
-            WHERE conversations.id = messages.conversation_id 
-            AND conversations.user_id = auth.uid()
-        )
-    );
-
--- RLS Policies for project_conversations table
-CREATE POLICY "Users can view conversations of own projects" ON public.project_conversations
-    FOR SELECT USING (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_conversations.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can insert conversations to own projects" ON public.project_conversations
-    FOR INSERT WITH CHECK (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_conversations.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can update conversations of own projects" ON public.project_conversations
-    FOR UPDATE USING (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_conversations.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
-
-CREATE POLICY "Users can delete conversations of own projects" ON public.project_conversations
-    FOR DELETE USING (
-        EXISTS (
-            SELECT 1 FROM public.projects 
-            WHERE projects.id = project_conversations.project_id 
-            AND projects.user_id = auth.uid()
-        )
-    );
+-- Create user profiles table
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255),
+    avatar_url TEXT,
+    preferences JSONB DEFAULT '{}',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 
 -- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS idx_projects_user_id ON public.projects(user_id);
-CREATE INDEX IF NOT EXISTS idx_projects_created_at ON public.projects(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_project_documents_project_id ON public.project_documents(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_conversations_project_id ON public.project_conversations(project_id);
-CREATE INDEX IF NOT EXISTS idx_project_conversations_created_at ON public.project_conversations(created_at);
-CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON public.conversations(user_id);
-CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON public.conversations(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON public.messages(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_messages_created_at ON public.messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_conversations_user_id ON conversations(user_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_created_at ON conversations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_documents_conversation_id ON documents(conversation_id);
 
--- Optional: Create a function to update the updated_at timestamp automatically
+-- Enable Row Level Security (RLS)
+ALTER TABLE conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+-- Create RLS policies for conversations
+CREATE POLICY "Users can view their own conversations" ON conversations
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own conversations" ON conversations
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own conversations" ON conversations
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own conversations" ON conversations
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Create RLS policies for messages
+CREATE POLICY "Users can view messages in their conversations" ON messages
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1 FROM conversations 
+            WHERE conversations.id = messages.conversation_id 
+            AND conversations.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can create messages in their conversations" ON messages
+    FOR INSERT WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM conversations 
+            WHERE conversations.id = messages.conversation_id 
+            AND conversations.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can update messages in their conversations" ON messages
+    FOR UPDATE USING (
+        EXISTS (
+            SELECT 1 FROM conversations 
+            WHERE conversations.id = messages.conversation_id 
+            AND conversations.user_id = auth.uid()
+        )
+    );
+
+CREATE POLICY "Users can delete messages in their conversations" ON messages
+    FOR DELETE USING (
+        EXISTS (
+            SELECT 1 FROM conversations 
+            WHERE conversations.id = messages.conversation_id 
+            AND conversations.user_id = auth.uid()
+        )
+    );
+
+-- Create RLS policies for documents
+CREATE POLICY "Users can view their own documents" ON documents
+    FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can create their own documents" ON documents
+    FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own documents" ON documents
+    FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own documents" ON documents
+    FOR DELETE USING (auth.uid() = user_id);
+
+-- Create RLS policies for user profiles
+CREATE POLICY "Users can view their own profile" ON user_profiles
+    FOR SELECT USING (auth.uid() = id);
+
+CREATE POLICY "Users can create their own profile" ON user_profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile" ON user_profiles
+    FOR UPDATE USING (auth.uid() = id);
+
+-- Create function to automatically create user profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.user_profiles (id, email, full_name)
+    VALUES (NEW.id, NEW.email, NEW.raw_user_meta_data->>'full_name');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create trigger to automatically create user profile
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Create function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
     NEW.updated_at = NOW();
     RETURN NEW;
 END;
-$$ language 'plpgsql';
+$$ LANGUAGE plpgsql;
 
--- Create trigger to automatically update updated_at on projects table
-CREATE TRIGGER update_projects_updated_at BEFORE UPDATE ON public.projects
+-- Create triggers for updated_at
+CREATE TRIGGER update_conversations_updated_at
+    BEFORE UPDATE ON conversations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Create trigger to automatically update updated_at on conversations table
-CREATE TRIGGER update_conversations_updated_at BEFORE UPDATE ON public.conversations
+CREATE TRIGGER update_user_profiles_updated_at
+    BEFORE UPDATE ON user_profiles
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Grant necessary permissions (these should be set by default in Supabase)
--- GRANT USAGE ON SCHEMA public TO anon, authenticated;
--- GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
--- GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+-- Create storage bucket for file uploads
+INSERT INTO storage.buckets (id, name, public) VALUES ('documents', 'documents', false);
+
+-- Create storage policies
+CREATE POLICY "Users can upload their own documents" ON storage.objects
+    FOR INSERT WITH CHECK (
+        bucket_id = 'documents' AND 
+        auth.uid()::text = (storage.foldername(name))[1]
+    );
+
+CREATE POLICY "Users can view their own documents" ON storage.objects
+    FOR SELECT USING (
+        bucket_id = 'documents' AND 
+        auth.uid()::text = (storage.foldername(name))[1]
+    );
+
+CREATE POLICY "Users can delete their own documents" ON storage.objects
+    FOR DELETE USING (
+        bucket_id = 'documents' AND 
+        auth.uid()::text = (storage.foldername(name))[1]
+    );
+
+-- Grant necessary permissions
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated;

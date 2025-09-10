@@ -1,159 +1,81 @@
-'use client';
+'use client'
 
-import { useEffect, useState } from 'react';
-import { createBrowserSupabaseClient, resetSupabaseClient } from '@/lib/supabaseClient';
+import { useState, useEffect } from 'react'
+import { supabase } from '@/lib/supabaseClient'
 
 export default function TestAuthPage() {
-  const [status, setStatus] = useState<any>({});
-  const [loading, setLoading] = useState(true);
-  const [authError, setAuthError] = useState<string | null>(null);
-  const [redirectAttempts, setRedirectAttempts] = useState(0);
-
-  // Controlled redirection function
-  const controlledRedirectToChat = () => {
-    // Limit redirect attempts to prevent infinite loops
-    if (redirectAttempts >= 3) {
-      console.error('Max redirect attempts reached. Manual intervention required.');
-      setAuthError('Unable to redirect. Please contact support.');
-      return;
-    }
-
-    console.log(`Attempting controlled redirect to chat (Attempt ${redirectAttempts + 1})`);
-    
-    // Increment redirect attempts
-    setRedirectAttempts(prev => prev + 1);
-
-    // Use replace to prevent adding to browser history
-    window.location.replace('/chat');
-  };
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const checkAuth = async () => {
-      // Reset client to ensure clean state for testing
-      resetSupabaseClient();
-      
-      const supabase = createBrowserSupabaseClient();
-      
-      if (!supabase) {
-        const errorMsg = 'Supabase client initialization failed';
-        console.error(errorMsg);
-        setAuthError(errorMsg);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        // Comprehensive authentication check
-        const { data: { user }, error: userError } = await supabase.auth.getUser();
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
-        // Detailed authentication logging
-        console.log('Authentication Verification', {
-          userExists: !!user,
-          sessionExists: !!session,
-          userError: userError?.message,
-          sessionError: sessionError?.message
-        });
-
-        // Handle potential authentication errors
-        if (userError || sessionError) {
-          const errorMsg = userError?.message || sessionError?.message || 'Authentication check failed';
-          console.warn('Authentication Warning:', errorMsg);
-          setAuthError(errorMsg);
-        }
-
-        // Strict authentication validation
-        const isAuthenticated = !!user && !!session;
-        
-        // Update status for debugging
-        setStatus({
-          user: user || null,
-          session: session || null,
-          isAuthenticated,
-          timestamp: new Date().toISOString()
-        });
-
-        // Controlled authentication redirection
-        if (isAuthenticated) {
-          console.log('User authenticated, preparing controlled redirect');
-          controlledRedirectToChat();
-          return;
-        }
-
-      } catch (error) {
-        const errorMsg = error instanceof Error 
-          ? error.message 
-          : 'Unexpected authentication verification error';
-        
-        console.error('Critical Authentication Failure:', error);
-        setAuthError(errorMsg);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    // Initial authentication check
-    checkAuth();
-
-    // Enhanced auth state change listener
-    const supabase = createBrowserSupabaseClient();
-    if (supabase) {
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log('Auth State Change', { 
-          event, 
-          sessionExists: !!session 
-        });
-        
-        // Controlled redirection on sign-in
-        if (event === 'SIGNED_IN' && session?.user) {
-          console.log('Sign-in detected, initiating controlled redirect');
-          controlledRedirectToChat();
-        }
-        
-        // Recheck authentication state
-        checkAuth();
-      });
-
-      // Cleanup subscription
-      return () => subscription.unsubscribe();
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+      setLoading(false)
     }
-  }, []);
+
+    getUser()
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
 
   if (loading) {
     return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-100">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 mx-auto mb-4"></div>
-          <p className="text-gray-700">Authenticating...</p>
-        </div>
+      <div className="min-h-screen bg-gradient-to-br from-apple-gray-50 to-white flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-apple-blue-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="p-8 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold mb-6">Authentication Debug Page</h1>
-      
-      {authError && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-          <strong className="font-bold">Authentication Issue: </strong>
-          <span className="block sm:inline">{authError}</span>
-          {redirectAttempts < 3 && (
-            <button 
-              onClick={controlledRedirectToChat}
-              className="ml-4 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+    <div className="min-h-screen bg-gradient-to-br from-apple-gray-50 to-white flex items-center justify-center px-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-apple-gray-100 p-8">
+        <h1 className="text-2xl font-bold text-apple-gray-900 mb-6 text-center">
+          Authentication Test
+        </h1>
+        
+        {user ? (
+          <div className="space-y-4">
+            <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+              <h2 className="font-semibold text-green-800 mb-2">✅ Authenticated</h2>
+              <p className="text-green-700 text-sm">
+                User ID: {user.id}
+              </p>
+              <p className="text-green-700 text-sm">
+                Email: {user.email}
+              </p>
+            </div>
+            
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="w-full btn-secondary"
             >
-              Retry Redirect
+              Sign Out
             </button>
-          )}
-        </div>
-      )}
-
-      <div className="bg-gray-100 p-4 rounded-lg mb-4">
-        <pre className="whitespace-pre-wrap text-sm">
-          {JSON.stringify(status, null, 2)}
-        </pre>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+              <h2 className="font-semibold text-red-800 mb-2">❌ Not Authenticated</h2>
+              <p className="text-red-700 text-sm">
+                Please sign in to access ChatCDC
+              </p>
+            </div>
+            
+            <a
+              href="/login"
+              className="w-full btn-primary text-center block"
+            >
+              Go to Login
+            </a>
+          </div>
+        )}
       </div>
     </div>
-  );
+  )
 }
