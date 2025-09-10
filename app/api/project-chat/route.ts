@@ -71,25 +71,45 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
     const stream = new ReadableStream({
       async start(controller) {
         try {
+          console.log('🚀 Starting project chat stream')
+          
+          // Get the last user message
+          const lastMessage = messages[messages.length - 1]
+          if (!lastMessage || lastMessage.role !== 'user') {
+            throw new Error('No user message found')
+          }
+
           const input = {
-            prompt: apiMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n') + '\n\nassistant:',
+            prompt: lastMessage.content,
             system_prompt: systemPrompt,
             max_tokens: 8192,
             max_image_resolution: 0.5
           }
 
+          console.log('📝 Sending to Claude with input:', { 
+            promptLength: input.prompt.length, 
+            systemPromptLength: input.system_prompt.length 
+          })
+
           // Stream response from Replicate
           for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
+            console.log('📄 Received chunk from Claude:', typeof event, event)
             const chunk = `data: ${JSON.stringify({ content: event })}\n\n`
             controller.enqueue(new TextEncoder().encode(chunk))
           }
 
+          console.log('✅ Claude stream completed')
           // Send completion signal
           controller.enqueue(new TextEncoder().encode('data: {"done": true}\n\n'))
           controller.close()
 
         } catch (error) {
-          console.error('Error in project chat stream:', error)
+          console.error('❌ Error in project chat stream:', error)
+          console.error('Error details:', {
+            message: error instanceof Error ? error.message : 'Unknown error',
+            stack: error instanceof Error ? error.stack : undefined
+          })
+          
           const errorChunk = `data: ${JSON.stringify({ 
             error: 'An error occurred while processing your request',
             content: 'I apologize, but I encountered an error while processing your request. Please try again.'

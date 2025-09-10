@@ -327,6 +327,14 @@ export default function ProjectChatPage() {
       setMessages(newMessages)
 
       // Get AI response using project knowledge base
+      console.log('🚀 Sending chat request to API:', {
+        projectId,
+        conversationId: currentConversationId,
+        userId: user.id,
+        knowledgeBaseLength: project.knowledge_base?.length || 0,
+        messageCount: newMessages.length
+      })
+
       const response = await fetch('/api/project-chat', {
         method: 'POST',
         headers: {
@@ -345,8 +353,12 @@ export default function ProjectChatPage() {
         }),
       })
 
+      console.log('📡 API response status:', response.status, response.statusText)
+
       if (!response.ok) {
-        throw new Error('Failed to get response')
+        const errorText = await response.text()
+        console.error('❌ API error response:', errorText)
+        throw new Error(`Failed to get response: ${response.status} ${response.statusText}`)
       }
 
       const reader = response.body?.getReader()
@@ -354,11 +366,15 @@ export default function ProjectChatPage() {
       let assistantMessage = ''
 
       if (reader) {
+        console.log('📖 Starting to read response stream')
         let buffer = ''
         
         while (true) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done) {
+            console.log('✅ Stream reading completed')
+            break
+          }
 
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
@@ -372,6 +388,18 @@ export default function ProjectChatPage() {
               if (dataStr && dataStr !== '[DONE]') {
                 try {
                   const data = JSON.parse(dataStr)
+                  console.log('📄 Parsed SSE data:', data)
+                  
+                  if (data.done) {
+                    console.log('🏁 Stream marked as done')
+                    break
+                  }
+                  
+                  if (data.error) {
+                    console.error('❌ Stream error:', data.error)
+                    throw new Error(data.error)
+                  }
+                  
                   if (data.content && typeof data.content === 'string') {
                     assistantMessage += data.content
                     const tempMessages = [...newMessages, {
@@ -383,12 +411,15 @@ export default function ProjectChatPage() {
                     setMessages(tempMessages)
                   }
                 } catch (e) {
-                  console.warn('Failed to parse SSE data:', dataStr)
+                  console.warn('⚠️ Failed to parse SSE data:', dataStr, e)
                 }
               }
             }
           }
         }
+      } else {
+        console.error('❌ No response body reader available')
+        throw new Error('No response body available')
       }
 
       // Save assistant message to database
