@@ -44,19 +44,19 @@ export default function ChatPage() {
   // Initialize with a default conversation
   useEffect(() => {
     const defaultConversation: Conversation = {
-      id: 'default',
+      id: crypto.randomUUID(),
       title: 'New Chat',
       messages: [],
       createdAt: new Date(),
       updatedAt: new Date()
     }
     setConversations([defaultConversation])
-    setCurrentConversationId('default')
+    setCurrentConversationId(defaultConversation.id)
   }, [])
 
   const createNewConversation = async () => {
     const newConversation: Conversation = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       title: 'New Chat',
       messages: [],
       createdAt: new Date(),
@@ -87,7 +87,7 @@ export default function ChatPage() {
   const createNewProject = () => {
     // For now, this creates a new conversation with a different title
     const newProject: Conversation = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       title: 'New Project',
       messages: [],
       createdAt: new Date(),
@@ -263,7 +263,7 @@ export default function ChatPage() {
   }
 
 
-  return (
+    return (
     <div className="min-h-screen bg-gradient-to-br from-apple-gray-50 to-white flex">
       {/* Sidebar */}
       <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-white border-r border-apple-gray-200 flex flex-col overflow-hidden`}>
@@ -332,10 +332,10 @@ export default function ChatPage() {
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="bg-white border-b border-apple-gray-200 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+      {/* Header */}
+      <header className="bg-white border-b border-apple-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
               <button
                 onClick={() => setSidebarOpen(!sidebarOpen)}
                 className="p-2 hover:bg-apple-gray-100 rounded-lg transition-colors"
@@ -344,23 +344,23 @@ export default function ChatPage() {
                   <div className="w-4 h-0.5 bg-apple-gray-600"></div>
                   <div className="w-4 h-0.5 bg-apple-gray-600"></div>
                   <div className="w-4 h-0.5 bg-apple-gray-600"></div>
-                </div>
+            </div>
               </button>
-              <div>
+            <div>
                 <h1 className="text-xl font-bold text-apple-gray-900">
                   {conversations.find(c => c.id === currentConversationId)?.title || 'ChatCDC'}
                 </h1>
-                <p className="text-sm text-apple-gray-600">AI Assistant</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 text-sm text-apple-gray-600">
-                <span>Welcome to ChatCDC</span>
-              </div>
+              <p className="text-sm text-apple-gray-600">AI Assistant</p>
             </div>
           </div>
-        </header>
+          
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 text-sm text-apple-gray-600">
+                <span>Welcome to ChatCDC</span>
+              </div>
+          </div>
+        </div>
+      </header>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
@@ -470,14 +470,14 @@ export default function ChatPage() {
                   <Upload className="w-5 h-5 text-apple-gray-600" />
                 )}
               </button>
-              <input
-                type="text"
-                value={inputMessage}
-                onChange={(e) => setInputMessage(e.target.value)}
-                placeholder="Type your message..."
-                className="flex-1 input-field"
-                disabled={loading}
-              />
+            <input
+              type="text"
+              value={inputMessage}
+              onChange={(e) => setInputMessage(e.target.value)}
+              placeholder="Type your message..."
+              className="flex-1 input-field"
+              disabled={loading}
+            />
             </div>
             <button
               type="submit"

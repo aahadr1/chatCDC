@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create conversations table
 CREATE TABLE IF NOT EXISTS conversations (
-    id TEXT PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title TEXT NOT NULL,
     user_id TEXT NOT NULL DEFAULT 'anonymous',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS conversations (
 -- Create messages table
 CREATE TABLE IF NOT EXISTS messages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL DEFAULT 'anonymous',
     role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
     content TEXT NOT NULL,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- Create uploaded_files table
 CREATE TABLE IF NOT EXISTS uploaded_files (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     user_id TEXT NOT NULL DEFAULT 'anonymous',
     file_name TEXT NOT NULL,
     file_path TEXT NOT NULL,
