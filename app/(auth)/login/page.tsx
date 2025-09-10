@@ -13,6 +13,15 @@ export default function LoginPage() {
   const [checkingAuth, setCheckingAuth] = useState(true);
   const router = useRouter();
 
+  // Check for error messages in URL
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const errorParam = urlParams.get('error');
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+    }
+  }, []);
+
   // Check if user is already authenticated
   useEffect(() => {
     const checkUser = async () => {
