@@ -180,7 +180,7 @@ export default function ChatPage() {
     ))
 
     try {
-      // Call GPT-5 API
+      // Call API
       console.log('Sending messages to API:', newMessages)
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -198,58 +198,28 @@ export default function ChatPage() {
         throw new Error('Failed to get response')
       }
 
-      const reader = response.body?.getReader()
-      const decoder = new TextDecoder()
-      let assistantMessage = ''
+      const data = await response.json()
+      console.log('API response:', data)
 
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                if (data.content) {
-                  assistantMessage += data.content
-                  // Update the assistant message in real-time
-                  const tempMessages = [...newMessages, {
-                    id: 'temp-assistant',
-                    content: assistantMessage,
-                    role: 'assistant' as const,
-                    created_at: new Date().toISOString()
-                  }]
-                  setMessages(tempMessages)
-                }
-                if (data.done) {
-                  break
-                }
-              } catch (e) {
-                // Ignore parsing errors
-              }
-            }
-          }
+      if (data.success && data.response) {
+        // Add assistant response
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          content: data.response,
+          role: 'assistant',
+          created_at: new Date().toISOString()
         }
+        
+        const finalMessages = [...newMessages, assistantMessage]
+        setMessages(finalMessages)
+        setConversations(prev => prev.map(conv => 
+          conv.id === currentConversationId 
+            ? { ...conv, messages: finalMessages, updatedAt: new Date() }
+            : conv
+        ))
+      } else {
+        throw new Error(data.error || 'No response from API')
       }
-
-      // Final update with complete message
-      const finalMessages = [...newMessages, {
-        id: (Date.now() + 1).toString(),
-        content: assistantMessage,
-        role: 'assistant' as const,
-        created_at: new Date().toISOString()
-      }]
-      
-      setMessages(finalMessages)
-      setConversations(prev => prev.map(conv => 
-        conv.id === currentConversationId 
-          ? { ...conv, messages: finalMessages, updatedAt: new Date() }
-          : conv
-      ))
 
     } catch (error) {
       console.error('Error getting AI response:', error)

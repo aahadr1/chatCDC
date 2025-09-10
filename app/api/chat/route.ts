@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { streamGPT5, ChatMessage } from '@/lib/replicate'
-import { supabase } from '@/lib/supabaseClient'
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,85 +11,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 })
     }
 
-    // Convert messages to the format expected by GPT-5
-    const chatMessages: ChatMessage[] = messages.map((msg: any) => ({
-      role: msg.role,
-      content: msg.content
-    }))
+    // For now, return a simple response to test the API
+    const lastMessage = messages[messages.length - 1]
+    const response = `I received your message: "${lastMessage.content}". This is a test response from the API.`
 
-    console.log('Converted chat messages:', chatMessages)
-
-    // Save user message to database
-    const userMessage = messages[messages.length - 1]
-    if (userMessage.role === 'user') {
-      const { error: messageError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: conversationId,
-          user_id: userId,
-          role: userMessage.role,
-          content: userMessage.content,
-          created_at: new Date().toISOString()
-        })
-
-      if (messageError) {
-        console.error('Error saving user message:', messageError)
-      }
-    }
-
-    // Create a streaming response
-    const encoder = new TextEncoder()
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          let fullResponse = ''
-          
-          for await (const chunk of streamGPT5(chatMessages, {
-            verbosity: 'medium',
-            reasoning_effort: 'minimal',
-            max_completion_tokens: 4000
-          })) {
-            fullResponse += chunk
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
-          }
-
-          // Save assistant response to database
-          const { error: assistantError } = await supabase
-            .from('messages')
-            .insert({
-              conversation_id: conversationId,
-              user_id: userId,
-              role: 'assistant',
-              content: fullResponse,
-              created_at: new Date().toISOString()
-            })
-
-          if (assistantError) {
-            console.error('Error saving assistant message:', assistantError)
-          }
-
-          // Update conversation timestamp
-          await supabase
-            .from('conversations')
-            .update({ updated_at: new Date().toISOString() })
-            .eq('id', conversationId)
-
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
-          controller.close()
-        } catch (error) {
-          console.error('Streaming error:', error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`))
-          controller.close()
-        }
-      }
-    })
-
-    return new Response(stream, {
-      headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-      },
+    return NextResponse.json({ 
+      success: true, 
+      response: response,
+      message: 'API is working correctly'
     })
   } catch (error) {
     console.error('Chat API error:', error)
