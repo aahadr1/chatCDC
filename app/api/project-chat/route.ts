@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { supabaseAdmin } from '@/lib/supabaseServer'
 import Replicate from 'replicate'
 
 const replicate = new Replicate({
@@ -9,21 +8,15 @@ const replicate = new Replicate({
 
 export async function POST(request: NextRequest) {
   try {
-    const cookieStore = cookies()
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value
-          },
-        },
-      }
-    )
+    // Get the authenticated user from the authorization header
+    const authHeader = request.headers.get('authorization')
+    if (!authHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'No authorization header' }, { status: 401 })
+    }
 
-    // Get the authenticated user
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    const token = authHeader.substring(7)
+    const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(token)
+    
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -36,7 +29,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify user owns the project
-    const { data: project, error: projectError } = await supabase
+    const { data: project, error: projectError } = await supabaseAdmin
       .from('projects')
       .select('name, description')
       .eq('id', projectId)
