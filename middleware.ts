@@ -5,16 +5,13 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs';
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
 
-  // Create Supabase middleware client
   const supabase = createMiddlewareClient({ req, res });
-
-  // Retrieve user session
   const {
     data: { user },
     error: userError
   } = await supabase.auth.getUser();
 
-  // Log authentication context for debugging
+  // Log detailed authentication context
   console.log('Middleware Authentication Check', {
     timestamp: new Date().toISOString(),
     path: req.nextUrl.pathname,
@@ -22,9 +19,18 @@ export async function middleware(req: NextRequest) {
     userError: userError?.message || 'none'
   });
 
-  // Define route types
   const { pathname, search } = req.nextUrl;
-  const isAuthRoute = pathname === '/login' || pathname.startsWith('/auth');
+  
+  // Define route types with stricter authentication requirements
+  const protectedRoutes = [
+    '/chat', 
+    '/projects', 
+    '/settings', 
+    '/profile'
+  ];
+
+  const authRoutes = ['/login', '/signup', '/auth'];
+  
   const isPublicAsset =
     pathname.startsWith('/_next') ||
     pathname.startsWith('/static') ||
@@ -34,40 +40,33 @@ export async function middleware(req: NextRequest) {
   // Always allow public assets
   if (isPublicAsset) return res;
 
-  // Redirect unauthenticated users from protected routes
-  if (!user && !isAuthRoute) {
-    const redirectUrl = req.nextUrl.clone();
-    redirectUrl.pathname = '/login';
-    
-    // Preserve original destination for post-login redirect
-    if (pathname !== '/') {
-      const from = pathname + (search || '');
-      redirectUrl.searchParams.set('redirectedFrom', from);
+  // Strict authentication check for protected routes
+  if (protectedRoutes.some(route => pathname.startsWith(route))) {
+    if (!user) {
+      console.warn('Unauthorized access attempt to protected route', { pathname });
+      const redirectUrl = req.nextUrl.clone();
+      redirectUrl.pathname = '/login';
+      redirectUrl.searchParams.set('redirectedFrom', pathname + (search || ''));
+      return NextResponse.redirect(redirectUrl);
     }
-
-    console.log('Redirecting Unauthenticated User', {
-      originalPath: pathname,
-      redirectPath: redirectUrl.pathname
-    });
-
-    return NextResponse.redirect(redirectUrl);
   }
 
   // Redirect authenticated users away from auth routes
-  if (user && isAuthRoute) {
-    const dest = req.nextUrl.searchParams.get('redirectedFrom') || '/';
+  if (user && authRoutes.some(route => pathname.startsWith(route))) {
+    const dest = req.nextUrl.searchParams.get('redirectedFrom') || '/chat';
     const redirectUrl = req.nextUrl.clone();
     redirectUrl.pathname = dest;
     redirectUrl.search = '';
-
-    console.log('Redirecting Authenticated User', {
-      fromPath: pathname,
-      toPath: redirectUrl.pathname
+    
+    console.log('Redirecting authenticated user', {
+      from: pathname,
+      to: redirectUrl.pathname
     });
 
     return NextResponse.redirect(redirectUrl);
   }
 
+  // Default case: allow the request
   return res;
 }
 

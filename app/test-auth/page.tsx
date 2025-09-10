@@ -9,6 +9,12 @@ export default function TestAuthPage() {
   const [showGoChatButton, setShowGoChatButton] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Forceful redirection function
+  const forceRedirectToChat = () => {
+    console.log('Force redirecting to chat page');
+    window.location.replace('/chat');
+  };
+
   useEffect(() => {
     const checkAuth = async () => {
       // Reset client to ensure clean state for testing
@@ -26,77 +32,65 @@ export default function TestAuthPage() {
       }
 
       try {
-        // Check current user
+        // Aggressive user and session check
         const { data: { user }, error: userError } = await supabase.auth.getUser();
-        
-        // Check session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        // Comprehensive status logging
-        console.log('Authentication Status:', {
-          user,
-          userError,
-          session,
-          sessionError
+        // Comprehensive logging
+        console.log('Authentication Verification', {
+          userExists: !!user,
+          sessionExists: !!session,
+          userError: userError?.message,
+          sessionError: sessionError?.message
         });
 
         // Handle authentication errors
         if (userError || sessionError) {
-          const errorMsg = userError?.message || sessionError?.message || 'Unknown authentication error';
+          const errorMsg = userError?.message || sessionError?.message || 'Authentication verification failed';
           console.error('Authentication Error:', errorMsg);
           setAuthError(errorMsg);
         }
 
-        // Determine if user is authenticated
+        // Strict authentication check
         const isAuthenticated = !!user && !!session;
-        setShowGoChatButton(isAuthenticated);
-
-        // Automatic redirect for authenticated users
+        
         if (isAuthenticated) {
-          console.log('User authenticated, redirecting to chat');
-          window.location.href = '/chat';
+          console.log('User fully authenticated, initiating multiple redirection strategies');
+          
+          // Strategy 1: Immediate window location replacement
+          forceRedirectToChat();
+
+          // Strategy 2: Delayed redirection as a fallback
+          setTimeout(() => {
+            if (window.location.pathname !== '/chat') {
+              console.warn('Primary redirection failed, attempting secondary redirection');
+              forceRedirectToChat();
+            }
+          }, 500);
+
+          // Strategy 3: Programmatic navigation fallback
+          try {
+            window.history.replaceState(null, '', '/chat');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          } catch (navError) {
+            console.error('Navigation state replacement failed', navError);
+          }
+
           return;
         }
 
-        // Test auth callback route
-        let testCallbackResponse;
-        try {
-          testCallbackResponse = await fetch(`${window.location.origin}/auth/callback/test`, {
-            method: 'GET'
-          });
-        } catch (fetchError) {
-          console.error('Callback route fetch error:', fetchError);
-          testCallbackResponse = { status: 'unreachable' };
-        }
-
+        // Set status for debugging
         setStatus({
           user: user || null,
-          userError,
           session: session || null,
-          sessionError,
           isAuthenticated,
-          supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
-          hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
-          currentUrl: window.location.href,
-          origin: window.location.origin,
-          authCallbackUrl: `${window.location.origin}/auth/callback`,
-          authCallbackStatus: testCallbackResponse.status || 'unknown',
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toISOString()
+        });
 
-          // Test URLs for different scenarios
-          testUrls: {
-            callback: `${window.location.origin}/auth/callback`,
-            login: `${window.location.origin}/login`,
-            home: `${window.location.origin}/`
-          }
-        });
+        setShowGoChatButton(isAuthenticated);
       } catch (error) {
-        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-        console.error('Authentication Check Error:', error);
-        setStatus({ 
-          error: errorMsg,
-          errorDetails: error
-        });
+        const errorMsg = error instanceof Error ? error.message : 'Unexpected authentication error';
+        console.error('Critical Authentication Check Failure:', error);
         setAuthError(errorMsg);
       } finally {
         setLoading(false);
@@ -105,16 +99,15 @@ export default function TestAuthPage() {
 
     checkAuth();
 
-    // Listen for auth changes
+    // Enhanced auth state change listener
     const supabase = createBrowserSupabaseClient();
     if (supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log('Auth state changed:', event, session);
+        console.log('Auth State Change Detected', { event, sessionExists: !!session });
         
-        // Redirect logic for authenticated users
         if (event === 'SIGNED_IN' && session?.user) {
-          console.log('User signed in, redirecting to chat');
-          window.location.href = '/chat';
+          console.log('Signed In Event - Forcing Redirection');
+          forceRedirectToChat();
         }
         
         checkAuth();
@@ -125,7 +118,14 @@ export default function TestAuthPage() {
   }, []);
 
   if (loading) {
-    return <div className="p-8">Loading...</div>;
+    return (
+      <div className="fixed inset-0 flex items-center justify-center bg-gray-100">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-700">Authenticating and redirecting...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -136,6 +136,12 @@ export default function TestAuthPage() {
         <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
           <strong className="font-bold">Authentication Error: </strong>
           <span className="block sm:inline">{authError}</span>
+          <button 
+            onClick={forceRedirectToChat}
+            className="ml-4 bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600"
+          >
+            Force Redirect to Chat
+          </button>
         </div>
       )}
 
