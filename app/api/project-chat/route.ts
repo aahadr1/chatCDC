@@ -93,72 +93,55 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
             maxTokens: input.max_tokens
           })
 
-          // Stream response from Replicate with proper SSE parsing
-          console.log('🚀 Starting Replicate stream...')
+          // Try non-streaming first to test basic functionality
+          console.log('🚀 Starting Replicate call (non-streaming)...')
           
           try {
-            const replicateStream = replicate.stream("anthropic/claude-3.5-sonnet", { input })
+            const output = await replicate.run("anthropic/claude-3.5-sonnet", { input })
+            console.log('📄 Replicate response:', typeof output, output)
             
-            let hasReceivedContent = false
+            let responseText = ''
             
-            for await (const chunk of replicateStream) {
-            console.log('📄 Raw chunk from Replicate:', typeof chunk, chunk)
-            
-            // Parse the SSE chunk properly
-            const chunkStr = String(chunk)
-            console.log('📄 Chunk as string:', chunkStr)
-            
-            const lines = chunkStr.split('\n')
-            
-            for (const line of lines) {
-              const trimmedLine = line.trim()
-              console.log('📄 Processing line:', trimmedLine)
-              
-              // Handle SSE format: {"event":"output","data":"content","id":"..."}
-              if (trimmedLine.startsWith('{') && trimmedLine.includes('"event"')) {
-                try {
-                  const sseEvent = JSON.parse(trimmedLine)
-                  console.log('📄 Parsed SSE event:', sseEvent)
-                  
-                  // Only process "output" events with actual data
-                  if (sseEvent.event === 'output' && sseEvent.data && sseEvent.data.trim()) {
-                    const content = sseEvent.data.trim()
-                    console.log('📄 Extracted content:', content)
-                    hasReceivedContent = true
-                    
-                    const chunk = `data: ${JSON.stringify({ content })}\n\n`
-                    controller.enqueue(new TextEncoder().encode(chunk))
-                  }
-                  // Stop on "done" event
-                  else if (sseEvent.event === 'done') {
-                    console.log('🏁 Received done event from Replicate')
-                    break
-                  }
-                  // Handle errors
-                  else if (sseEvent.event === 'error') {
-                    console.error('❌ Error from Replicate:', sseEvent.data)
-                    throw new Error(sseEvent.data || 'Unknown error from Replicate')
-                  }
-                  // Log other events for debugging
-                  else {
-                    console.log('📄 Other event type:', sseEvent.event, 'data:', sseEvent.data)
-                  }
-                } catch (e) {
-                  console.warn('⚠️ Failed to parse SSE event:', trimmedLine, e)
-                }
+            if (typeof output === 'string') {
+              responseText = output
+            } else if (Array.isArray(output)) {
+              responseText = output.join('')
+            } else if (output && typeof output === 'object') {
+              // Try to extract text from various possible structures
+              if (output.text) {
+                responseText = String(output.text)
+              } else if (output.content) {
+                responseText = String(output.content)
+              } else if (output.response) {
+                responseText = String(output.response)
+              } else {
+                responseText = JSON.stringify(output)
               }
             }
-          }
-          
-            console.log('📄 Stream completed. Has received content:', hasReceivedContent)
-
-            console.log('✅ Claude stream completed')
+            
+            console.log('📄 Extracted response text:', responseText)
+            
+            if (responseText && responseText.trim()) {
+              // Send the response as a single chunk
+              const chunk = `data: ${JSON.stringify({ content: responseText.trim() })}\n\n`
+              controller.enqueue(new TextEncoder().encode(chunk))
+              console.log('✅ Response sent to client')
+            } else {
+              console.error('❌ No valid response text extracted')
+              const errorChunk = `data: ${JSON.stringify({ 
+                error: 'No response generated',
+                content: 'I apologize, but I couldn\'t generate a response. Please try again.'
+              })}\n\n`
+              controller.enqueue(new TextEncoder().encode(errorChunk))
+            }
+            
+            console.log('✅ Claude call completed')
             // Send completion signal
             controller.enqueue(new TextEncoder().encode('data: {"done": true}\n\n'))
             controller.close()
             
           } catch (replicateError) {
-            console.error('❌ Replicate stream error:', replicateError)
+            console.error('❌ Replicate call error:', replicateError)
             console.error('Error details:', {
               message: replicateError instanceof Error ? replicateError.message : 'Unknown error',
               stack: replicateError instanceof Error ? replicateError.stack : undefined
