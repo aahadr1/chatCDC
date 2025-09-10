@@ -11,27 +11,24 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next()
   }
 
-  // Simple session check via cookie presence
-  const hasSessionCookie = req.cookies.has('sb-access-token') || req.cookies.has('supabase-auth-token')
+  // Debug: Log all cookies for troubleshooting
+  const allCookies = Array.from(req.cookies.keys())
+  console.log('All cookies:', allCookies)
 
-  // Redirect to auth if accessing protected route without apparent session
-  if (!hasSessionCookie && isProtectedRoute) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = '/auth'
-    return NextResponse.redirect(redirectUrl)
-  }
+  // Check for Supabase session cookies (more comprehensive check)
+  const hasSessionCookie = allCookies.some(key => 
+    key.includes('supabase') || 
+    key.includes('sb-') ||
+    key.startsWith('auth-token') ||
+    key.includes('access-token')
+  )
 
-  // Redirect to chat if accessing auth page with apparent session
-  if (hasSessionCookie && isAuthPage) {
-    const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = '/chat'
-    return NextResponse.redirect(redirectUrl)
-  }
+  console.log('Has session cookie:', hasSessionCookie)
 
-  // Redirect root to appropriate page
+  // Only redirect root to auth, let other routes pass through for now
   if (req.nextUrl.pathname === '/') {
     const redirectUrl = req.nextUrl.clone()
-    redirectUrl.pathname = hasSessionCookie ? '/chat' : '/auth'
+    redirectUrl.pathname = '/auth'
     return NextResponse.redirect(redirectUrl)
   }
 

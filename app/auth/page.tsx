@@ -28,6 +28,20 @@ export default function AuthPage() {
       }
     }
     checkAuth()
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (event === 'SIGNED_IN' && session) {
+          setMessage({ type: 'success', text: 'Login successful! Redirecting...' })
+          setTimeout(() => {
+            router.push('/chat')
+          }, 1000)
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
   }, [router])
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -45,8 +59,9 @@ export default function AuthPage() {
         if (error) throw error
         
         if (data.user) {
-          setMessage({ type: 'success', text: 'Login successful!' })
-          router.push('/chat')
+          setMessage({ type: 'success', text: 'Login successful! Redirecting...' })
+          // Force immediate redirect
+          window.location.href = '/chat'
         }
       } else if (mode === 'signup') {
         if (password !== confirmPassword) {
