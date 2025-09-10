@@ -20,33 +20,47 @@ export async function POST(request: NextRequest) {
 
     console.log('Converted chat messages:', chatMessages)
 
-    // Note: Database saving is disabled for testing
-    // In production, you would save messages to your database here
-
-    // Create a streaming response
+    // Create a streaming response with advanced configuration
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
         try {
           let fullResponse = ''
           
+          // Advanced GPT-5 configuration with reasoning and verbosity controls
           for await (const chunk of streamGPT5(chatMessages, {
             verbosity: 'medium',
-            reasoning_effort: 'minimal',
-            max_completion_tokens: 4000
+            reasoning_effort: 'medium',
+            max_completion_tokens: 4000,
+            system_prompt: 
+              'You are an advanced AI assistant in a chat application. ' +
+              'Provide clear, concise, and helpful responses. ' +
+              'Adapt your communication style to the user\'s needs.'
           })) {
             fullResponse += chunk
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
           }
 
-          // Note: Database saving is disabled for testing
-          // In production, you would save the assistant response here
-
+          // Final message indicating stream completion
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
           controller.close()
         } catch (error) {
           console.error('Streaming error:', error)
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: 'Failed to get response' })}\n\n`))
+          
+          // Detailed error response
+          const errorMessage = error instanceof Error 
+            ? error.message 
+            : 'An unexpected error occurred during AI response generation'
+          
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            error: errorMessage,
+            details: error instanceof Error ? {
+              name: error.name,
+              message: error.message,
+              stack: error.stack
+            } : null
+          })}\n\n`))
+          
           controller.close()
         }
       }
@@ -61,6 +75,15 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Chat API error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    
+    // Comprehensive error handling
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: error instanceof Error ? {
+        name: error.name,
+        message: error.message,
+        stack: error.stack
+      } : null
+    }, { status: 500 })
   }
 }

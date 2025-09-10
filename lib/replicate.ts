@@ -14,73 +14,125 @@ export interface GPT5Response {
   reasoning?: string
 }
 
+export interface GPT5StreamOptions {
+  /** Control model's reasoning depth */
+  reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'
+  
+  /** Control response verbosity */
+  verbosity?: 'low' | 'medium' | 'high'
+  
+  /** Maximum tokens for response generation */
+  max_completion_tokens?: number
+  
+  /** Custom system prompt to guide model behavior */
+  system_prompt?: string
+  
+  /** Optional image inputs for multimodal tasks */
+  image_input?: string[]
+}
+
 export async function* streamGPT5(
   messages: ChatMessage[],
-  options: {
-    verbosity?: 'low' | 'medium' | 'high'
-    reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'
-    max_completion_tokens?: number
-    system_prompt?: string
-  } = {}
+  options: GPT5StreamOptions = {}
 ): AsyncGenerator<string, void, unknown> {
-  try {
-    console.log('GPT-5 streamGPT5 called with messages:', messages)
-    console.log('Replicate API token exists:', !!process.env.REPLICATE_API_TOKEN)
+  // Logging and telemetry
+  console.log('GPT-5 Stream Initiated', {
+    messageCount: messages.length,
+    apiTokenAvailable: !!process.env.REPLICATE_API_TOKEN
+  })
+
+  // Validate and prepare input
+  const formattedMessages = messages.map(msg => ({
+    role: msg.role,
+    content: msg.content
+  }))
+
+  // Advanced configuration with best practices
+  const input = {
+    messages: formattedMessages,
     
-    // Convert messages to the format expected by GPT-5
-    const formattedMessages = messages.map(msg => ({
-      role: msg.role,
-      content: msg.content
-    }))
-
-    const input = {
-      messages: formattedMessages,
-      verbosity: options.verbosity || 'medium',
-      reasoning_effort: options.reasoning_effort || 'minimal',
-      max_completion_tokens: options.max_completion_tokens || 4000,
-      system_prompt: options.system_prompt || 'You are a helpful AI assistant.'
-    }
-
-    console.log('Streaming GPT-5 with input:', JSON.stringify(input, null, 2))
-
-    // Try GPT-5 first, then fallback to a working model
-    const models = [
-      { name: "openai/gpt-5", input: input },
-      { name: "meta/llama-2-70b-chat", input: { 
-        prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
-        max_new_tokens: 1000
-      }},
-      { name: "mistralai/mistral-7b-instruct-v0.1", input: {
-        prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
-        max_new_tokens: 1000
-      }}
-    ]
-
-    for (const model of models) {
-      try {
-        console.log(`Trying model: ${model.name}`)
-        for await (const event of replicate.stream(model.name, { input: model.input })) {
-          console.log(`${model.name} event received:`, event)
-          if (typeof event === 'string') {
-            yield event
-          } else if (event && typeof event === 'object' && 'content' in event) {
-            yield event.content as string
-          }
-        }
-        console.log(`Successfully used model: ${model.name}`)
-        return // Exit successfully
-      } catch (modelError) {
-        console.error(`Model ${model.name} failed:`, modelError)
-        continue // Try next model
-      }
-    }
+    // Reasoning controls
+    reasoning_effort: options.reasoning_effort || 'medium',
+    verbosity: options.verbosity || 'medium',
     
-    // If all models fail, throw an error
-    throw new Error('All AI models failed to respond')
-  } catch (error) {
-    console.error('Error streaming GPT-5:', error)
-    throw error
+    // Performance and cost optimization
+    max_completion_tokens: options.max_completion_tokens || 4000,
+    
+    // Enhanced system prompt with role clarity
+    system_prompt: options.system_prompt || 
+      'You are an advanced AI assistant designed to provide helpful, accurate, and context-aware responses. ' +
+      'Break down complex tasks, think step-by-step, and prioritize clarity and precision.',
+    
+    // Optional multimodal support
+    ...(options.image_input && { image_input: options.image_input })
   }
+
+  // Logging input for debugging
+  console.log('GPT-5 Input Configuration:', JSON.stringify(input, null, 2))
+
+  // Model priority list with fallback strategies
+  const modelFallbackList = [
+    { 
+      name: "openai/gpt-5", 
+      input: input,
+      description: "Primary GPT-5 model for advanced reasoning"
+    },
+    { 
+      name: "meta/llama-2-70b-chat", 
+      input: { 
+        prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
+        max_new_tokens: 1000
+      },
+      description: "Fallback model for general conversation"
+    },
+    { 
+      name: "mistralai/mistral-7b-instruct-v0.1", 
+      input: { 
+        prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
+        max_new_tokens: 800
+      },
+      description: "Lightweight fallback model"
+    }
+  ]
+
+  // Attempt models with comprehensive error handling
+  for (const model of modelFallbackList) {
+    try {
+      console.log(`Attempting model: ${model.name} - ${model.description}`)
+      
+      const stream = replicate.stream(model.name, { input: model.input })
+      
+      for await (const event of stream) {
+        // Robust event parsing
+        if (typeof event === 'string') {
+          yield event
+        } else if (event && typeof event === 'object' && 'content' in event) {
+          yield event.content as string
+        }
+      }
+      
+      // Successful model usage
+      console.log(`Successfully used model: ${model.name}`)
+      return
+    } catch (modelError) {
+      console.error(`Model ${model.name} failed:`, modelError)
+      
+      // Detailed error logging
+      if (modelError instanceof Error) {
+        console.error('Error details:', {
+          name: modelError.name,
+          message: modelError.message,
+          stack: modelError.stack
+        })
+      }
+      
+      // Continue to next model
+      continue
+    }
+  }
+
+  // Comprehensive fallback if all models fail
+  throw new Error('All AI models failed. Please check your configuration and API access.')
 }
 
 export default replicate
