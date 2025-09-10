@@ -12,7 +12,9 @@ import {
   User, 
   Crown,
   Trash2,
-  Edit3
+  Edit3,
+  LogOut,
+  LogIn
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -40,7 +42,33 @@ export default function Sidebar({
   const [editingTitle, setEditingTitle] = React.useState('');
   const [projects, setProjects] = React.useState<Array<{ id: string; name: string }>>([]);
   const [loadingProjects, setLoadingProjects] = React.useState(false);
+  const [user, setUser] = React.useState<any>(null);
+  const [isLoading, setIsLoading] = React.useState(true);
   const router = useRouter();
+
+  // Get current user
+  React.useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) {
+      setIsLoading(false);
+      return;
+    }
+
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+      setIsLoading(false);
+    };
+
+    getUser();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   React.useEffect(() => {
     const supabase = createBrowserSupabaseClient();
@@ -101,6 +129,19 @@ export default function Sidebar({
     if (days < 7) return `${days} days ago`;
     if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
     return date.toLocaleDateString();
+  };
+
+  const handleLogout = async () => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+
+    try {
+      await supabase.auth.signOut();
+      router.push('/login');
+      router.refresh();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
   return (
@@ -241,23 +282,51 @@ export default function Sidebar({
 
       {/* Footer */}
       <div className="p-4 border-t border-apple-gray-200 space-y-2">
-        <button
-          onClick={onOpenSettings}
-          className="sidebar-item w-full justify-start"
-        >
-          <Settings size={18} />
-          <span>Settings</span>
-        </button>
-        
-        <div className="sidebar-item w-full justify-start">
-          <User size={18} />
-          <span>Profile</span>
-        </div>
-        
-        <div className="sidebar-item w-full justify-start">
-          <Crown size={18} />
-          <span>Upgrade to Pro</span>
-        </div>
+        {/* User Info & Auth */}
+        {user ? (
+          <>
+            <div className="sidebar-item w-full justify-start bg-apple-blue-50 border border-apple-blue-200 pointer-events-none">
+              <User size={18} className="text-apple-blue-600" />
+              <div className="flex flex-col min-w-0 flex-1">
+                <span className="text-apple-blue-800 font-medium text-sm truncate">
+                  {user.email}
+                </span>
+                <span className="text-apple-blue-600 text-xs">
+                  Signed in
+                </span>
+              </div>
+            </div>
+            
+            <button
+              onClick={onOpenSettings}
+              className="sidebar-item w-full justify-start"
+            >
+              <Settings size={18} />
+              <span>Settings</span>
+            </button>
+            
+            <div className="sidebar-item w-full justify-start">
+              <Crown size={18} />
+              <span>Upgrade to Pro</span>
+            </div>
+            
+            <button
+              onClick={handleLogout}
+              className="sidebar-item w-full justify-start text-apple-red-600 hover:bg-apple-red-50"
+            >
+              <LogOut size={18} />
+              <span>Sign Out</span>
+            </button>
+          </>
+        ) : (
+          <Link 
+            href="/login"
+            className="sidebar-item w-full justify-center bg-apple-blue-500 text-white hover:bg-apple-blue-600 font-medium"
+          >
+            <LogIn size={18} />
+            <span>Sign In / Sign Up</span>
+          </Link>
+        )}
       </div>
     </div>
   );
