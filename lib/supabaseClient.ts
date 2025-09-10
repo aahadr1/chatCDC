@@ -1,5 +1,4 @@
 import { createClient } from '@supabase/supabase-js'
-import { createClientComponentClient } from '@supabase/ssr'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co'
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key'
@@ -12,9 +11,6 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: true
   }
 })
-
-// Client component client for React components
-export const createSupabaseClient = () => createClientComponentClient()
 
 // Auth utilities
 export const getCurrentUser = async () => {

@@ -1,6 +1,4 @@
-import { createServerComponentClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -13,12 +11,6 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
     persistSession: false
   }
 })
-
-// Server component client (for server components)
-export const createSupabaseServerClient = () => {
-  const cookieStore = cookies()
-  return createServerComponentClient({ cookies: () => cookieStore })
-}
 
 // Helper to get authenticated user from API route
 export const getAuthenticatedUser = async (request: Request) => {
@@ -40,9 +32,8 @@ export const getAuthenticatedUser = async (request: Request) => {
 // Helper to get user ID from session
 export const getUserId = async (): Promise<string | null> => {
   try {
-    const supabase = createSupabaseServerClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    return user?.id || null
+    // Not available without a request context; return null here
+    return null
   } catch {
     return null
   }
