@@ -6,6 +6,7 @@ import { createBrowserSupabaseClient, resetSupabaseClient } from '@/lib/supabase
 export default function TestAuthPage() {
   const [status, setStatus] = useState<any>({});
   const [loading, setLoading] = useState(true);
+  const [showGoChatButton, setShowGoChatButton] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -27,11 +28,6 @@ export default function TestAuthPage() {
         // Check session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-        // Test auth callback route
-        const testCallbackResponse = await fetch(`${window.location.origin}/auth/callback/test`, {
-          method: 'GET'
-        }).catch(() => ({ status: 'unreachable' }));
-
         // Comprehensive status logging
         console.log('Authentication Status:', {
           user,
@@ -40,11 +36,21 @@ export default function TestAuthPage() {
           sessionError
         });
 
+        // Determine if user is authenticated
+        const isAuthenticated = !!user && !!session;
+        setShowGoChatButton(isAuthenticated);
+
+        // Test auth callback route
+        const testCallbackResponse = await fetch(`${window.location.origin}/auth/callback/test`, {
+          method: 'GET'
+        }).catch(() => ({ status: 'unreachable' }));
+
         setStatus({
           user: user || null,
           userError,
           session: session || null,
           sessionError,
+          isAuthenticated,
           supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
           hasAnonKey: !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
           currentUrl: window.location.href,
@@ -60,6 +66,13 @@ export default function TestAuthPage() {
             home: `${window.location.origin}/`
           }
         });
+
+        // Automatic redirect for authenticated users
+        if (isAuthenticated) {
+          console.log('User authenticated, preparing redirect');
+          // Uncomment the next line if you want automatic redirect
+          // window.location.href = '/chat';
+        }
       } catch (error) {
         console.error('Authentication Check Error:', error);
         setStatus({ 
@@ -81,8 +94,10 @@ export default function TestAuthPage() {
         
         // Redirect logic for authenticated users
         if (event === 'SIGNED_IN' && session?.user) {
-          console.log('User signed in, redirecting to home');
-          window.location.href = '/';
+          console.log('User signed in, preparing redirect');
+          setShowGoChatButton(true);
+          // Uncomment the next line if you want automatic redirect
+          // window.location.href = '/chat';
         }
         
         checkAuth();
@@ -129,6 +144,15 @@ export default function TestAuthPage() {
           >
             Sign Out
           </button>
+
+          {showGoChatButton && (
+            <button
+              onClick={() => window.location.href = '/chat'}
+              className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600"
+            >
+              Go to Chat
+            </button>
+          )}
         </div>
 
         <div className="mt-4">
