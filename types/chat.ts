@@ -17,9 +17,9 @@ export interface Conversation {
 }
 
 export interface ChatSettings {
-  model: 'gpt-5' | 'gpt-5-mini' | 'gpt-5-nano';
-  verbosity: 'low' | 'medium' | 'high';
-  reasoningEffort: 'minimal' | 'low' | 'medium' | 'high';
+  model: string;
+  verbosity: 'minimal' | 'medium' | 'verbose';
+  reasoningEffort: 'minimal' | 'medium' | 'high';
   enableWebSearch: boolean;
   maxTokens?: number;
 }

@@ -20,7 +20,7 @@ interface SidebarProps {
   currentConversationId: string | null;
   settings: ChatSettings;
   onNewChat: () => void;
-  onSelectConversation: (id: string) => void;
+  onSelectConversation?: (id: string) => void;
   onDeleteConversation: (id: string) => void;
   onRenameConversation: (id: string, newTitle: string) => void;
   onOpenSettings: () => void;
@@ -171,9 +171,9 @@ export default function Sidebar({
                     />
                   </div>
                 ) : (
-                  <div
-                    onClick={() => onSelectConversation(conversation.id)}
-                    className="p-3 cursor-pointer"
+                  <Link
+                    href={`/chat/${conversation.id}`}
+                    className="block p-3 cursor-pointer"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1 min-w-0">
@@ -209,7 +209,7 @@ export default function Sidebar({
                         </button>
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 )}
               </div>
             ))
