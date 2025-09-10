@@ -1,9 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabaseClient'
-import { MessageCircle, LogOut, User } from 'lucide-react'
+import { useState } from 'react'
+import { MessageCircle } from 'lucide-react'
 
 interface Message {
   id: string
@@ -13,38 +11,9 @@ interface Message {
 }
 
 export default function ChatPage() {
-  const [user, setUser] = useState<any>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
-
-  useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        router.push('/login')
-        return
-      }
-      setUser(user)
-    }
-
-    getUser()
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT' || !session) {
-        router.push('/login')
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [router])
-
-  const handleSignOut = async () => {
-    await supabase.auth.signOut()
-    router.push('/login')
-  }
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,13 +43,6 @@ export default function ChatPage() {
     }, 1000)
   }
 
-  if (!user) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-apple-gray-50 to-white flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-apple-blue-500 border-t-transparent rounded-full animate-spin"></div>
-      </div>
-    )
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-apple-gray-50 to-white">
@@ -99,16 +61,8 @@ export default function ChatPage() {
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm text-apple-gray-600">
-              <User className="w-4 h-4" />
-              <span>{user.email}</span>
+              <span>Welcome to ChatCDC</span>
             </div>
-            <button
-              onClick={handleSignOut}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-apple-gray-600 hover:text-apple-gray-900 hover:bg-apple-gray-100 rounded-lg transition-colors"
-            >
-              <LogOut className="w-4 h-4" />
-              Sign Out
-            </button>
           </div>
         </div>
       </header>
