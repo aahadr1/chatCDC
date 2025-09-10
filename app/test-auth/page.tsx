@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createBrowserSupabaseClient } from '@/lib/supabaseClient';
+import { createBrowserSupabaseClient, resetSupabaseClient } from '@/lib/supabaseClient';
 
 export default function TestAuthPage() {
   const [status, setStatus] = useState<any>({});
@@ -9,6 +9,9 @@ export default function TestAuthPage() {
 
   useEffect(() => {
     const checkAuth = async () => {
+      // Reset client to ensure clean state for testing
+      resetSupabaseClient();
+      
       const supabase = createBrowserSupabaseClient();
       
       if (!supabase) {
@@ -28,6 +31,14 @@ export default function TestAuthPage() {
         const testCallbackResponse = await fetch(`${window.location.origin}/auth/callback/test`, {
           method: 'GET'
         }).catch(() => ({ status: 'unreachable' }));
+
+        // Comprehensive status logging
+        console.log('Authentication Status:', {
+          user,
+          userError,
+          session,
+          sessionError
+        });
 
         setStatus({
           user: user || null,
@@ -50,7 +61,11 @@ export default function TestAuthPage() {
           }
         });
       } catch (error) {
-        setStatus({ error: error instanceof Error ? error.message : 'Unknown error' });
+        console.error('Authentication Check Error:', error);
+        setStatus({ 
+          error: error instanceof Error ? error.message : 'Unknown error',
+          errorDetails: error
+        });
       } finally {
         setLoading(false);
       }
@@ -63,6 +78,13 @@ export default function TestAuthPage() {
     if (supabase) {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         console.log('Auth state changed:', event, session);
+        
+        // Redirect logic for authenticated users
+        if (event === 'SIGNED_IN' && session?.user) {
+          console.log('User signed in, redirecting to home');
+          window.location.href = '/';
+        }
+        
         checkAuth();
       });
 
