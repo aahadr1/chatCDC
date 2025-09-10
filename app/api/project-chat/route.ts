@@ -96,18 +96,21 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
             console.log('📄 Received chunk from Claude:', typeof event, event)
             
             // Handle different event formats from Replicate
-            let content = event
+            let content: string = ''
             if (typeof event === 'string') {
               content = event
             } else if (event && typeof event === 'object') {
               // If event is an object, try to extract the text content
-              if (event.content) {
-                content = event.content
-              } else if (event.text) {
-                content = event.text
+              const eventObj = event as any // Type assertion to handle unknown structure
+              if (eventObj.content) {
+                content = String(eventObj.content)
+              } else if (eventObj.text) {
+                content = String(eventObj.text)
               } else {
                 content = JSON.stringify(event)
               }
+            } else {
+              content = String(event)
             }
             
             const chunk = `data: ${JSON.stringify({ content })}\n\n`
