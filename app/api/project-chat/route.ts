@@ -94,7 +94,23 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
           // Stream response from Replicate
           for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
             console.log('📄 Received chunk from Claude:', typeof event, event)
-            const chunk = `data: ${JSON.stringify({ content: event })}\n\n`
+            
+            // Handle different event formats from Replicate
+            let content = event
+            if (typeof event === 'string') {
+              content = event
+            } else if (event && typeof event === 'object') {
+              // If event is an object, try to extract the text content
+              if (event.content) {
+                content = event.content
+              } else if (event.text) {
+                content = event.text
+              } else {
+                content = JSON.stringify(event)
+              }
+            }
+            
+            const chunk = `data: ${JSON.stringify({ content })}\n\n`
             controller.enqueue(new TextEncoder().encode(chunk))
           }
 

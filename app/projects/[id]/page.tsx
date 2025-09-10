@@ -482,6 +482,7 @@ export default function ProjectChatPage() {
                 try {
                   const data = JSON.parse(dataStr)
                   console.log('📄 Parsed SSE data:', data)
+                  console.log('📄 Content type:', typeof data.content, data.content)
                   
                   if (data.done) {
                     console.log('🏁 Stream marked as done')
@@ -493,15 +494,34 @@ export default function ProjectChatPage() {
                     throw new Error(data.error)
                   }
                   
-                  if (data.content && typeof data.content === 'string') {
-                    assistantMessage += data.content
-                    const tempMessages = [...newMessages, {
-                      id: 'temp-assistant',
-                      content: assistantMessage,
-                      role: 'assistant' as const,
-                      timestamp: new Date()
-                    }]
-                    setMessages(tempMessages)
+                  if (data.content) {
+                    let contentText = ''
+                    
+                    // Handle different content formats from Replicate
+                    if (typeof data.content === 'string') {
+                      contentText = data.content
+                    } else if (typeof data.content === 'object' && data.content !== null) {
+                      // If content is an object, try to extract text from it
+                      if (data.content.content && typeof data.content.content === 'string') {
+                        contentText = data.content.content
+                      } else if (data.content.text && typeof data.content.text === 'string') {
+                        contentText = data.content.text
+                      } else {
+                        // Try to stringify the object
+                        contentText = JSON.stringify(data.content)
+                      }
+                    }
+                    
+                    if (contentText) {
+                      assistantMessage += contentText
+                      const tempMessages = [...newMessages, {
+                        id: 'temp-assistant',
+                        content: assistantMessage,
+                        role: 'assistant' as const,
+                        timestamp: new Date()
+                      }]
+                      setMessages(tempMessages)
+                    }
                   }
                 } catch (e) {
                   console.warn('⚠️ Failed to parse SSE data:', dataStr, e)
