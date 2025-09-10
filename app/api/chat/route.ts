@@ -29,8 +29,36 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder()
     const normalizeToText = (chunk: any): string => {
       if (chunk == null) return ''
-      if (typeof chunk === 'string') return chunk
+      // If it's a JSON string like {"event":"output","data":"Hi"}, extract the data
+      if (typeof chunk === 'string') {
+        const trimmed = chunk.trim()
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try {
+            const obj = JSON.parse(trimmed)
+            // Replicate event format
+            if (obj && typeof obj === 'object' && 'event' in obj) {
+              if (obj.event === 'output' && typeof obj.data === 'string') return obj.data
+              // ignore done/null/other events
+              return ''
+            }
+            // If it parsed but isn't an event, stringify fallback
+            if (typeof obj?.content === 'string') return obj.content
+            if (typeof obj?.text === 'string') return obj.text
+            if (typeof obj?.output === 'string') return obj.output
+            return ''
+          } catch {
+            // Not JSON, treat as plain text
+            return chunk
+          }
+        }
+        return chunk
+      }
       if (typeof chunk === 'object') {
+        // Structured Replicate event
+        if (typeof (chunk as any).event === 'string') {
+          if ((chunk as any).event === 'output' && typeof (chunk as any).data === 'string') return (chunk as any).data
+          return ''
+        }
         if (typeof (chunk as any).content === 'string') return (chunk as any).content
         if (typeof (chunk as any).text === 'string') return (chunk as any).text
         if (typeof (chunk as any).output === 'string') return (chunk as any).output
