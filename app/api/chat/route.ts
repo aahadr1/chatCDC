@@ -1,67 +1,98 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { streamGPT5, ChatMessage } from '@/lib/replicate'
+import Replicate from 'replicate'
+
+interface Message {
+  role: 'user' | 'assistant' | 'system'
+  content: string
+}
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, conversationId, userId = 'anonymous' } = await request.json()
+    const { messages } = await request.json()
 
-    console.log('API received messages:', messages)
-    console.log('Last message content:', messages[messages.length - 1]?.content)
+    // Check if API token is configured
+    if (!process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_TOKEN === 'your_replicate_api_token_here') {
+      return NextResponse.json({ 
+        error: 'Replicate API token not configured. Please add your token to .env.local' 
+      }, { status: 500 })
+    }
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 })
     }
 
-    // Convert messages to the format expected by GPT-5
-    const chatMessages: ChatMessage[] = messages.map((msg: any) => ({
-      role: msg.role,
-      content: msg.content
-    }))
+    const replicate = new Replicate({
+      auth: process.env.REPLICATE_API_TOKEN,
+    })
 
-    console.log('Converted chat messages:', chatMessages)
-
-    // Create a streaming response with advanced configuration
+    // Create a streaming response
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          let fullResponse = ''
-          
-          // Advanced GPT-5 configuration with reasoning and verbosity controls
-          for await (const chunk of streamGPT5(chatMessages, {
-            verbosity: 'medium',
-            reasoning_effort: 'medium',
-            max_completion_tokens: 4000,
-            system_prompt: 
-              'You are an advanced AI assistant in a chat application. ' +
-              'Provide clear, concise, and helpful responses. ' +
-              'Adapt your communication style to the user\'s needs.'
-          })) {
-            fullResponse += chunk
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
+          // Use GPT-5 with proper message format
+          const input = {
+            messages: messages.map((msg: Message) => ({
+              role: msg.role,
+              content: msg.content
+            })),
+            system_prompt: "You are a helpful, harmless, and honest AI assistant. Provide clear, concise, and accurate responses.",
+            verbosity: "medium",
+            reasoning_effort: "medium",
+            max_completion_tokens: 4000
           }
 
-          // Final message indicating stream completion
+          console.log('Sending to GPT-5:', input)
+
+          const stream = await replicate.stream("openai/gpt-5", { input })
+
+          for await (const event of stream) {
+            if (event) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: event })}\n\n`))
+            }
+          }
+
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
           controller.close()
         } catch (error) {
-          console.error('Streaming error:', error)
+          console.error('GPT-5 Streaming error:', error)
           
-          // Detailed error response
-          const errorMessage = error instanceof Error 
-            ? error.message 
-            : 'An unexpected error occurred during AI response generation'
-          
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
-            error: errorMessage,
-            details: error instanceof Error ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack
-            } : null
-          })}\n\n`))
-          
-          controller.close()
+          // Fallback to Llama 2 if GPT-5 fails
+          try {
+            console.log('Falling back to Llama 2...')
+            
+            const prompt = messages
+              .map((msg: Message) => `${msg.role === 'user' ? 'Human' : 'Assistant'}: ${msg.content}`)
+              .join('\n\n') + '\n\nAssistant: '
+
+            const fallbackStream = await replicate.stream("meta/llama-2-70b-chat", {
+              input: {
+                prompt: prompt,
+                max_new_tokens: 1000,
+                temperature: 0.7,
+                system_prompt: "You are a helpful AI assistant."
+              }
+            })
+
+            for await (const event of fallbackStream) {
+              if (event) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: event })}\n\n`))
+              }
+            }
+
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
+            controller.close()
+          } catch (fallbackError) {
+            console.error('Fallback model also failed:', fallbackError)
+            
+            // Send error in stream format
+            const errorMessage = error instanceof Error ? error.message : 'An error occurred'
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+              content: `Sorry, I encountered an error: ${errorMessage}. Please check your API token and try again.`
+            })}\n\n`))
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
+            controller.close()
+          }
         }
       }
     })
@@ -75,15 +106,9 @@ export async function POST(request: NextRequest) {
     })
   } catch (error) {
     console.error('Chat API error:', error)
-    
-    // Comprehensive error handling
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : null
+      message: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
 }

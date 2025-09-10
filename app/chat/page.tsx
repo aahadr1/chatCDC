@@ -1,16 +1,13 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Plus, FolderPlus, MoreVertical, Trash2, Edit3, Upload, FileText, X } from 'lucide-react'
-import { supabase } from '@/lib/supabaseClient'
+import { MessageCircle, Plus, Sidebar, Send, Loader2, Menu, X } from 'lucide-react'
 
 interface Message {
   id: string
   content: string
   role: 'user' | 'assistant'
-  created_at: string
-  file_url?: string
-  file_name?: string
+  timestamp: Date
 }
 
 interface Conversation {
@@ -21,14 +18,6 @@ interface Conversation {
   updatedAt: Date
 }
 
-interface UploadedFile {
-  id: string
-  file_name: string
-  file_url: string
-  file_size: number
-  file_type: string
-}
-
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
@@ -36,10 +25,13 @@ export default function ChatPage() {
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
-  const [isUploading, setIsUploading] = useState(false)
-  const fileInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  // Auto-scroll to bottom when new messages arrive
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
 
   // Initialize with a default conversation
   useEffect(() => {
@@ -54,7 +46,7 @@ export default function ChatPage() {
     setCurrentConversationId(defaultConversation.id)
   }, [])
 
-  const createNewConversation = async () => {
+  const createNewConversation = () => {
     const newConversation: Conversation = {
       id: crypto.randomUUID(),
       title: 'New Chat',
@@ -63,38 +55,8 @@ export default function ChatPage() {
       updatedAt: new Date()
     }
     
-    // Save to database
-    const { error } = await supabase
-      .from('conversations')
-      .insert({
-        id: newConversation.id,
-        title: newConversation.title,
-        user_id: 'anonymous',
-        created_at: newConversation.createdAt.toISOString(),
-        updated_at: newConversation.updatedAt.toISOString()
-      })
-
-    if (error) {
-      console.error('Error creating conversation:', error)
-    }
-
     setConversations(prev => [newConversation, ...prev])
     setCurrentConversationId(newConversation.id)
-    setMessages([])
-    setUploadedFiles([])
-  }
-
-  const createNewProject = () => {
-    // For now, this creates a new conversation with a different title
-    const newProject: Conversation = {
-      id: crypto.randomUUID(),
-      title: 'New Project',
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-    setConversations(prev => [newProject, ...prev])
-    setCurrentConversationId(newProject.id)
     setMessages([])
   }
 
@@ -119,52 +81,43 @@ export default function ChatPage() {
     }
   }
 
-  const handleFileUpload = async (file: File) => {
-    if (!currentConversationId) return
+  const generateTitle = (message: string): string => {
+    // Generate a smart title from the first message
+    const words = message.trim().split(' ').slice(0, 4)
+    return words.join(' ') + (message.trim().split(' ').length > 4 ? '...' : '')
+  }
 
-    setIsUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('conversationId', currentConversationId)
-      formData.append('userId', 'anonymous')
-
-      const response = await fetch('/api/upload-pdf', {
-        method: 'POST',
-        body: formData,
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setUploadedFiles(prev => [...prev, result.file])
-      } else {
-        alert('Failed to upload file: ' + result.error)
-      }
-    } catch (error) {
-      console.error('Upload error:', error)
-      alert('Failed to upload file')
-    } finally {
-      setIsUploading(false)
+  // Auto-resize textarea
+  const adjustTextareaHeight = () => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 120)}px`
     }
   }
 
-  const removeUploadedFile = (fileId: string) => {
-    setUploadedFiles(prev => prev.filter(file => file.id !== fileId))
+  // Handle input change
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputMessage(e.target.value)
+    adjustTextareaHeight()
   }
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault()
+  // Handle keyboard shortcuts
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSendMessage()
+    }
+  }
+
+  const handleSendMessage = async () => {
     if (!inputMessage.trim() || loading || !currentConversationId) return
 
-    // Store the message content before clearing the input
     const messageContent = inputMessage.trim()
-
     const userMessage: Message = {
       id: Date.now().toString(),
       content: messageContent,
       role: 'user',
-      created_at: new Date().toISOString()
+      timestamp: new Date()
     }
 
     const newMessages = [...messages, userMessage]
@@ -172,25 +125,38 @@ export default function ChatPage() {
     setInputMessage('')
     setLoading(true)
 
-    // Update conversation with new message
-    setConversations(prev => prev.map(conv => 
-      conv.id === currentConversationId 
-        ? { ...conv, messages: newMessages, updatedAt: new Date() }
-        : conv
-    ))
+    // Update conversation title if it's the first message
+    if (messages.length === 0) {
+      const title = generateTitle(messageContent)
+      setConversations(prev => prev.map(conv => 
+        conv.id === currentConversationId 
+          ? { ...conv, title, messages: newMessages, updatedAt: new Date() }
+          : conv
+      ))
+    } else {
+      setConversations(prev => prev.map(conv => 
+        conv.id === currentConversationId 
+          ? { ...conv, messages: newMessages, updatedAt: new Date() }
+          : conv
+      ))
+    }
+
+    // Reset textarea height
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
 
     try {
-      // Call GPT-5 API
-      console.log('Sending messages to API:', newMessages)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: newMessages,
-          conversationId: currentConversationId,
-          userId: 'anonymous'
+          messages: newMessages.map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
         }),
       })
 
@@ -221,7 +187,7 @@ export default function ChatPage() {
                     id: 'temp-assistant',
                     content: assistantMessage,
                     role: 'assistant' as const,
-                    created_at: new Date().toISOString()
+                    timestamp: new Date()
                   }]
                   setMessages(tempMessages)
                 }
@@ -239,9 +205,9 @@ export default function ChatPage() {
       // Final update with complete message
       const finalMessages = [...newMessages, {
         id: (Date.now() + 1).toString(),
-        content: assistantMessage,
+        content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.',
         role: 'assistant' as const,
-        created_at: new Date().toISOString()
+        timestamp: new Date()
       }]
       
       setMessages(finalMessages)
@@ -255,242 +221,196 @@ export default function ChatPage() {
       console.error('Error getting AI response:', error)
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: 'Sorry, I encountered an error. Please check your API configuration and try again.',
         role: 'assistant',
-        created_at: new Date().toISOString()
+        timestamp: new Date()
       }
       const finalMessages = [...newMessages, errorMessage]
       setMessages(finalMessages)
+      setConversations(prev => prev.map(conv => 
+        conv.id === currentConversationId 
+          ? { ...conv, messages: finalMessages, updatedAt: new Date() }
+          : conv
+      ))
     } finally {
       setLoading(false)
     }
   }
 
 
-    return (
-    <div className="min-h-screen bg-gradient-to-br from-apple-gray-50 to-white flex">
+  return (
+    <div className="h-screen bg-gray-50 flex">
       {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-white border-r border-apple-gray-200 flex flex-col overflow-hidden`}>
+      <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-gray-900 text-white flex flex-col overflow-hidden`}>
         {/* Sidebar Header */}
-        <div className="p-4 border-b border-apple-gray-200">
+        <div className="p-4 border-b border-gray-800">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 bg-gradient-to-br from-apple-blue-500 to-apple-blue-600 rounded-lg flex items-center justify-center">
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
               <MessageCircle className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-lg font-bold text-apple-gray-900">ChatCDC</h1>
+            <h1 className="text-lg font-bold">ChatCDC</h1>
           </div>
           
-          {/* Action Buttons */}
-          <div className="space-y-2">
-            <button
-              onClick={createNewConversation}
-              className="w-full sidebar-item"
-            >
-              <Plus className="w-4 h-4" />
-              New Chat
-            </button>
-            <button
-              onClick={createNewProject}
-              className="w-full sidebar-item"
-            >
-              <FolderPlus className="w-4 h-4" />
-              New Project
-            </button>
-          </div>
+          <button
+            onClick={createNewConversation}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Chat
+          </button>
         </div>
 
         {/* Conversations List */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar">
-          <div className="p-2">
-            <h3 className="text-xs font-semibold text-apple-gray-500 uppercase tracking-wide mb-2 px-2">
-              Recent Chats
-            </h3>
-            {conversations.map((conversation) => (
-              <div
-                key={conversation.id}
-                className={`sidebar-item group relative ${
-                  currentConversationId === conversation.id ? 'active' : ''
-                }`}
-                onClick={() => switchConversation(conversation.id)}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{conversation.title}</p>
-                  <p className="text-xs text-apple-gray-500">
-                    {conversation.messages.length} messages
-                  </p>
-                </div>
+        <div className="flex-1 overflow-y-auto p-2">
+          {conversations.map((conversation) => (
+            <div
+              key={conversation.id}
+              className={`group relative flex items-center gap-3 px-3 py-3 rounded-lg cursor-pointer transition-colors ${
+                currentConversationId === conversation.id 
+                  ? 'bg-gray-800' 
+                  : 'hover:bg-gray-800'
+              }`}
+              onClick={() => switchConversation(conversation.id)}
+            >
+              <MessageCircle className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate">{conversation.title}</p>
+              </div>
+              {conversations.length > 1 && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     deleteConversation(conversation.id)
                   }}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 rounded transition-all"
+                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded transition-all"
                 >
-                  <Trash2 className="w-3 h-3 text-red-500" />
+                  <X className="w-3 h-3" />
                 </button>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
 
       {/* Main Chat Area */}
       <div className="flex-1 flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b border-apple-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+        {/* Header */}
+        <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-              <button
-                onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-2 hover:bg-apple-gray-100 rounded-lg transition-colors"
-              >
-                <div className="w-5 h-5 flex flex-col justify-center gap-1">
-                  <div className="w-4 h-0.5 bg-apple-gray-600"></div>
-                  <div className="w-4 h-0.5 bg-apple-gray-600"></div>
-                  <div className="w-4 h-0.5 bg-apple-gray-600"></div>
-            </div>
-              </button>
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
             <div>
-                <h1 className="text-xl font-bold text-apple-gray-900">
-                  {conversations.find(c => c.id === currentConversationId)?.title || 'ChatCDC'}
-                </h1>
-              <p className="text-sm text-apple-gray-600">AI Assistant</p>
+              <h1 className="text-xl font-semibold text-gray-900">
+                {conversations.find(c => c.id === currentConversationId)?.title || 'ChatCDC'}
+              </h1>
+              <p className="text-sm text-gray-500">Powered by GPT-5</p>
             </div>
           </div>
-          
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-apple-gray-600">
-                <span>Welcome to ChatCDC</span>
-            </div>
-          </div>
-        </div>
-      </header>
+        </header>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto">
           {messages.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gradient-to-br from-apple-blue-500 to-apple-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <MessageCircle className="w-8 h-8 text-white" />
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center max-w-md mx-auto px-4">
+                <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <MessageCircle className="w-8 h-8 text-blue-600" />
+                </div>
+                <h2 className="text-2xl font-semibold text-gray-900 mb-4">
+                  Welcome to ChatCDC
+                </h2>
+                <p className="text-gray-600 leading-relaxed">
+                  I'm your AI assistant powered by GPT-5. Ask me anything - from coding help to creative writing, 
+                  analysis, math problems, or just casual conversation. How can I help you today?
+                </p>
               </div>
-              <h2 className="text-xl font-semibold text-apple-gray-900 mb-2">
-                Welcome to ChatCDC
-              </h2>
-              <p className="text-apple-gray-600 max-w-md mx-auto">
-                Start a conversation with your AI assistant. Ask questions, get help with tasks, or just chat!
-              </p>
             </div>
           ) : (
-            messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
-                <div
-                  className={`max-w-[70%] px-4 py-3 rounded-2xl ${
-                    message.role === 'user'
-                      ? 'bg-apple-blue-500 text-white'
-                      : 'bg-white border border-apple-gray-200 text-apple-gray-900'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                </div>
-              </div>
-            ))
-          )}
-          
-          {loading && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-apple-gray-200 px-4 py-3 rounded-2xl">
-                <div className="flex items-center gap-2">
-                  <div className="typing-indicator">
-                    <span>●</span>
-                    <span>●</span>
-                    <span>●</span>
+            <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+              {messages.map((message) => (
+                <div key={message.id} className="group">
+                  <div className={`flex gap-4 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0">
+                      {message.role === 'user' ? (
+                        <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm font-medium">U</span>
+                        </div>
+                      ) : (
+                        <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                          <MessageCircle className="w-4 h-4 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
+                      <div className={`inline-block max-w-[80%] px-4 py-3 rounded-2xl ${
+                        message.role === 'user'
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white border border-gray-200 text-gray-900'
+                      }`}>
+                        <div className="whitespace-pre-wrap break-words">{message.content}</div>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-apple-gray-500 text-sm">AI is thinking...</span>
                 </div>
-              </div>
+              ))}
+              
+              {loading && (
+                <div className="group">
+                  <div className="flex gap-4">
+                    <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                      <MessageCircle className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="flex-1">
+                      <div className="inline-block bg-white border border-gray-200 px-4 py-3 rounded-2xl">
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
+                          <span className="text-gray-500">Thinking...</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
+              <div ref={messagesEndRef} />
             </div>
           )}
         </div>
 
         {/* Input Area */}
-        <div className="border-t border-apple-gray-200 p-6">
-          {/* Uploaded Files Display */}
-          {uploadedFiles.length > 0 && (
-            <div className="mb-4 p-3 bg-apple-gray-50 rounded-xl">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="w-4 h-4 text-apple-gray-600" />
-                <span className="text-sm font-medium text-apple-gray-700">Uploaded Files:</span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {uploadedFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-apple-gray-200"
+        <div className="bg-white border-t border-gray-200 p-4">
+          <div className="max-w-4xl mx-auto">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <div className="relative">
+                  <textarea
+                    ref={textareaRef}
+                    value={inputMessage}
+                    onChange={handleInputChange}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Message ChatCDC..."
+                    className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-32"
+                    style={{ minHeight: '50px' }}
+                    disabled={loading}
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={loading || !inputMessage.trim()}
+                    className="absolute right-2 bottom-2 w-8 h-8 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-full flex items-center justify-center transition-colors"
                   >
-                    <FileText className="w-4 h-4 text-apple-blue-500" />
-                    <span className="text-sm text-apple-gray-700 truncate max-w-32">
-                      {file.file_name}
-                    </span>
-                    <button
-                      onClick={() => removeUploadedFile(file.id)}
-                      className="text-apple-gray-400 hover:text-red-500 transition-colors"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                    <Send className="w-4 h-4 text-white" />
+                  </button>
+                </div>
               </div>
             </div>
-          )}
-
-          <form onSubmit={handleSendMessage} className="flex gap-3">
-            <div className="flex-1 flex gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".pdf"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (file) {
-                    handleFileUpload(file)
-                    e.target.value = '' // Reset input
-                  }
-                }}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading || isUploading}
-                className="p-3 border border-apple-gray-200 rounded-xl hover:bg-apple-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Upload PDF"
-              >
-                {isUploading ? (
-                  <div className="w-5 h-5 border-2 border-apple-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <Upload className="w-5 h-5 text-apple-gray-600" />
-                )}
-              </button>
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1 input-field"
-              disabled={loading}
-            />
+            <div className="mt-2 text-xs text-gray-500 text-center">
+              ChatCDC can make mistakes. Please verify important information.
             </div>
-            <button
-              type="submit"
-              disabled={loading || !inputMessage.trim()}
-              className="btn-primary px-6 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Send
-            </button>
-          </form>
+          </div>
         </div>
       </div>
     </div>
