@@ -7,6 +7,23 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 let _supabaseClient: SupabaseClient | null = null;
 
 /**
+ * Global error handler for Supabase-related errors
+ * @param context Descriptive context for the error
+ * @param error Error object or message
+ */
+function logSupabaseError(context: string, error: unknown) {
+  console.error(`Supabase Error - ${context}:`, {
+    error: error instanceof Error 
+      ? {
+          message: error.message,
+          name: error.name,
+          stack: error.stack
+        } 
+      : String(error)
+  });
+}
+
+/**
  * Validate Supabase configuration
  * @returns {boolean} Whether the configuration is valid
  */
@@ -84,34 +101,39 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
       }
     });
 
-    // Add error event listener
-    _supabaseClient.on('error', (error) => {
-      console.error('Supabase Client Global Error:', {
-        message: error.message,
-        stack: error.stack
-      });
-    });
-
     // Add custom error handling for authentication
     _supabaseClient.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_IN') {
-        console.log('User signed in successfully');
-      } else if (event === 'SIGN_OUT') {
-        console.log('User signed out');
-      } else if (event === 'AUTH_ERROR') {
-        console.error('Authentication Error:', session);
+      switch (event) {
+        case 'SIGNED_IN':
+          console.log('User signed in successfully', { 
+            userId: session?.user?.id 
+          });
+          break;
+        case 'SIGN_OUT':
+          console.log('User signed out');
+          break;
+        case 'AUTH_ERROR':
+          logSupabaseError('Authentication State Change', session);
+          break;
+        default:
+          console.log('Auth state changed:', event);
       }
     });
 
+    // Wrap potential error-prone methods with global error handling
+    const originalSignIn = _supabaseClient.auth.signIn;
+    _supabaseClient.auth.signIn = async (...args) => {
+      try {
+        return await originalSignIn.apply(_supabaseClient.auth, args);
+      } catch (error) {
+        logSupabaseError('Sign In Error', error);
+        throw error;
+      }
+    };
+
     return _supabaseClient;
   } catch (error) {
-    console.error('Failed to create Supabase browser client', {
-      error: error instanceof Error ? {
-        message: error.message,
-        name: error.name,
-        stack: error.stack
-      } : String(error)
-    });
+    logSupabaseError('Client Creation Error', error);
     return null;
   }
 }
