@@ -9,12 +9,23 @@ export async function GET(request: NextRequest) {
   const error = requestUrl.searchParams.get('error');
   const error_description = requestUrl.searchParams.get('error_description');
 
+  // Handle test request
+  if (requestUrl.pathname.endsWith('/test')) {
+    return NextResponse.json({
+      status: 'callback_route_working',
+      timestamp: new Date().toISOString(),
+      url: request.url,
+      method: 'GET'
+    });
+  }
+
   // Log for debugging
   console.log('Auth callback received:', {
     code: code ? 'present' : 'missing',
     error,
     error_description,
-    url: request.url
+    url: request.url,
+    pathname: requestUrl.pathname
   });
 
   if (error) {
@@ -26,7 +37,7 @@ export async function GET(request: NextRequest) {
     try {
       const supabase = createRouteHandlerClient({ cookies });
       const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-      
+
       if (sessionError) {
         console.error('Session exchange error:', sessionError);
         return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(sessionError.message)}`, request.url));
