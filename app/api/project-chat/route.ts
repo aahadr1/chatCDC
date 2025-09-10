@@ -87,22 +87,32 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
           }
 
           console.log('📝 Sending to Claude with input:', { 
+            prompt: input.prompt,
             promptLength: input.prompt.length, 
-            systemPromptLength: input.system_prompt.length 
+            systemPromptLength: input.system_prompt.length,
+            maxTokens: input.max_tokens
           })
 
           // Stream response from Replicate with proper SSE parsing
-          const replicateStream = replicate.stream("anthropic/claude-3.5-sonnet", { input })
+          console.log('🚀 Starting Replicate stream...')
           
-          for await (const chunk of replicateStream) {
-            console.log('📄 Raw chunk from Replicate:', chunk)
+          try {
+            const replicateStream = replicate.stream("anthropic/claude-3.5-sonnet", { input })
+            
+            let hasReceivedContent = false
+            
+            for await (const chunk of replicateStream) {
+            console.log('📄 Raw chunk from Replicate:', typeof chunk, chunk)
             
             // Parse the SSE chunk properly
             const chunkStr = String(chunk)
+            console.log('📄 Chunk as string:', chunkStr)
+            
             const lines = chunkStr.split('\n')
             
             for (const line of lines) {
               const trimmedLine = line.trim()
+              console.log('📄 Processing line:', trimmedLine)
               
               // Handle SSE format: {"event":"output","data":"content","id":"..."}
               if (trimmedLine.startsWith('{') && trimmedLine.includes('"event"')) {
@@ -114,6 +124,7 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
                   if (sseEvent.event === 'output' && sseEvent.data && sseEvent.data.trim()) {
                     const content = sseEvent.data.trim()
                     console.log('📄 Extracted content:', content)
+                    hasReceivedContent = true
                     
                     const chunk = `data: ${JSON.stringify({ content })}\n\n`
                     controller.enqueue(new TextEncoder().encode(chunk))
@@ -128,17 +139,38 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
                     console.error('❌ Error from Replicate:', sseEvent.data)
                     throw new Error(sseEvent.data || 'Unknown error from Replicate')
                   }
+                  // Log other events for debugging
+                  else {
+                    console.log('📄 Other event type:', sseEvent.event, 'data:', sseEvent.data)
+                  }
                 } catch (e) {
                   console.warn('⚠️ Failed to parse SSE event:', trimmedLine, e)
                 }
               }
             }
           }
+          
+            console.log('📄 Stream completed. Has received content:', hasReceivedContent)
 
-          console.log('✅ Claude stream completed')
-          // Send completion signal
-          controller.enqueue(new TextEncoder().encode('data: {"done": true}\n\n'))
-          controller.close()
+            console.log('✅ Claude stream completed')
+            // Send completion signal
+            controller.enqueue(new TextEncoder().encode('data: {"done": true}\n\n'))
+            controller.close()
+            
+          } catch (replicateError) {
+            console.error('❌ Replicate stream error:', replicateError)
+            console.error('Error details:', {
+              message: replicateError instanceof Error ? replicateError.message : 'Unknown error',
+              stack: replicateError instanceof Error ? replicateError.stack : undefined
+            })
+            
+            const errorChunk = `data: ${JSON.stringify({ 
+              error: 'Failed to get response from AI model',
+              content: 'I apologize, but I encountered an error while processing your request. Please try again.'
+            })}\n\n`
+            controller.enqueue(new TextEncoder().encode(errorChunk))
+            controller.close()
+          }
 
         } catch (error) {
           console.error('❌ Error in project chat stream:', error)
