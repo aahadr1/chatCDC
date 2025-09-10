@@ -84,116 +84,123 @@ export async function POST(request: NextRequest) {
         console.log('📝 Processing as text file')
         extractedText = Buffer.from(fileBuffer).toString('utf-8')
         console.log(`✅ Direct text extraction complete: ${extractedText.length} characters`)
-      } else if (isDolphinSupportedFormat(fileType)) {
-        console.log('🐬 Using Dolphin model for document parsing')
-        
-        // Check if Replicate token is available
-        if (!process.env.REPLICATE_API_TOKEN) {
-          console.error('❌ REPLICATE_API_TOKEN not configured')
-          throw new Error('Text extraction service not configured')
-        }
-
-        // Check file size (reasonable limit for document processing)
-        const maxSizeBytes = 50 * 1024 * 1024 // 50MB limit
-        if (fileBuffer.byteLength > maxSizeBytes) {
-          console.error(`❌ File too large: ${fileSizeKB}KB (max 50MB)`)
-          throw new Error(`File too large: ${fileSizeKB}KB. Maximum file size is 50MB.`)
-        }
-
-        try {
-          console.log('🚀 Using Dolphin model for document parsing...')
-          
-          // Dolphin model works directly with file URLs, no need for base64 conversion
-          const input = {
-            file: fileUrl,
-            output_format: "markdown_content" // Get structured markdown output
-          }
-
-          console.log('📡 Calling Dolphin API with input:', { file: fileUrl, output_format: input.output_format })
-          
-          // Add timeout and retry logic
-          const maxRetries = 2
-          let lastError: Error | null = null
-          let output: any = null
-          
-          for (let attempt = 1; attempt <= maxRetries; attempt++) {
-            try {
-              console.log(`🔄 Attempt ${attempt}/${maxRetries}`)
-              
-              // Set a reasonable timeout for document processing
-              const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('Request timeout after 5 minutes')), 5 * 60 * 1000)
-              })
-              
-              const replicatePromise = replicate.run(
-                "bytedance/dolphin:19f1ad93970c2bf21442a842d01d97fb04a94a69d2b36dee43531a9cbae07e85", 
-                { input }
-              )
-              
-              output = await Promise.race([replicatePromise, timeoutPromise])
-              
-              console.log('📄 Dolphin response received successfully')
-              break // Success, exit retry loop
-              
-            } catch (attemptError) {
-              console.error(`❌ Attempt ${attempt} failed:`, attemptError)
-              lastError = attemptError instanceof Error ? attemptError : new Error('Unknown error')
-              
-              if (attempt === maxRetries) {
-                throw lastError
-              }
-              
-              // Wait before retry (exponential backoff)
-              const waitTime = Math.pow(2, attempt) * 1000 // 2s, 4s, 8s...
-              console.log(`⏳ Waiting ${waitTime}ms before retry...`)
-              await new Promise(resolve => setTimeout(resolve, waitTime))
-            }
-          }
-
-          if (!output) {
-            throw new Error('Failed to get response from Dolphin model after retries')
-          }
-
-          console.log('📄 Dolphin response type:', typeof output)
-          
-          // Handle different response formats
-          if (typeof output === 'string') {
-            extractedText = output.trim()
-          } else if (Array.isArray(output)) {
-            extractedText = output.join('').trim()
-          } else if (output && typeof output === 'object') {
-            // If it's an object, try to extract text content
-            extractedText = JSON.stringify(output, null, 2)
-          } else {
-            throw new Error('Unexpected response format from Dolphin model')
-          }
-
-          console.log(`✅ Dolphin extraction complete: ${extractedText.length} characters`)
-          
-          // Clean up the extracted text
-          if (extractedText.length > 0) {
-            // Remove excessive whitespace but preserve structure
-            extractedText = extractedText
-              .replace(/\n\s*\n\s*\n/g, '\n\n') // Remove triple+ line breaks
-              .replace(/[ \t]+/g, ' ') // Replace multiple spaces/tabs with single space
-              .trim()
-          }
-          
-        } catch (dolphinError) {
-          console.error('❌ Dolphin extraction failed:', dolphinError)
-          console.error('Error details:', {
-            message: dolphinError instanceof Error ? dolphinError.message : 'Unknown error',
-            stack: dolphinError instanceof Error ? dolphinError.stack : undefined
-          })
-          
-          // Fallback: create a placeholder with file info
-          extractedText = `Document: ${fileName}\n\nFile type: ${fileType}\nFile size: ${fileSizeKB}KB\n\n[This document was uploaded but text extraction temporarily failed. The file has been saved and you can ask questions about it, though responses may be limited.]`
-          console.log('🔄 Using fallback text extraction')
-        }
       } else {
-        // Unsupported file type
-        console.log(`⚠️ Unsupported file type: ${fileType}`)
-        extractedText = `Document: ${fileName}\n\nFile type: ${fileType} (unsupported)\nFile size: ${fileSizeKB}KB\n\n[This file type is not currently supported for automatic text extraction. The file has been saved and you can reference it in conversations, but text content is not available.]`
+        console.log('📄 Processing document with multiple extraction methods...')
+        
+        // Try multiple extraction approaches for better reliability
+        let extractionSuccessful = false
+        
+        // Debug mode: Skip API calls and use mock extraction for testing
+        if (process.env.NODE_ENV === 'development' && process.env.DEBUG_MODE === 'true') {
+          console.log('🧪 DEBUG MODE: Using mock text extraction')
+          extractedText = `Document: ${fileName}
+
+This is mock extracted text for debugging purposes.
+
+File Type: ${fileType}
+File Size: ${fileSizeKB}KB
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.
+
+Mock content continues here to simulate a real document with multiple paragraphs and information that would typically be extracted from a PDF or other document format.
+
+This allows testing the project creation flow without relying on external APIs.`
+          extractionSuccessful = true
+          console.log(`✅ Mock extraction complete: ${extractedText.length} characters`)
+        }
+        
+        // Method 1: Try Dolphin model for supported formats
+        else if (isDolphinSupportedFormat(fileType) && process.env.REPLICATE_API_TOKEN) {
+          try {
+            console.log('🐬 Attempting Dolphin model extraction...')
+            
+            const input = {
+              file: fileUrl,
+              output_format: "markdown_content"
+            }
+
+            // Shorter timeout for faster fallback
+            const timeoutPromise = new Promise((_, reject) => {
+              setTimeout(() => reject(new Error('Dolphin timeout after 2 minutes')), 2 * 60 * 1000)
+            })
+            
+            const replicatePromise = replicate.run(
+              "bytedance/dolphin:19f1ad93970c2bf21442a842d01d97fb04a94a69d2b36dee43531a9cbae07e85", 
+              { input }
+            )
+            
+            const output = await Promise.race([replicatePromise, timeoutPromise])
+            
+            if (typeof output === 'string' && output.trim().length > 10) {
+              extractedText = output.trim()
+              extractionSuccessful = true
+              console.log(`✅ Dolphin extraction successful: ${extractedText.length} characters`)
+            } else if (Array.isArray(output)) {
+              const joined = output.join('').trim()
+              if (joined.length > 10) {
+                extractedText = joined
+                extractionSuccessful = true
+                console.log(`✅ Dolphin extraction successful (array): ${extractedText.length} characters`)
+              }
+            }
+          } catch (dolphinError) {
+            console.error('❌ Dolphin extraction failed, trying fallback methods:', dolphinError)
+          }
+        }
+        
+        // Method 2: Try Claude as fallback for complex documents
+        if (!extractionSuccessful && process.env.REPLICATE_API_TOKEN) {
+          try {
+            console.log('🤖 Attempting Claude extraction as fallback...')
+            
+            // Convert to base64 for Claude
+            const base64File = Buffer.from(fileBuffer).toString('base64')
+            const dataUrl = `data:${fileType};base64,${base64File}`
+            
+            // Limit file size for Claude (smaller limit)
+            if (fileBuffer.byteLength <= 20 * 1024 * 1024) { // 20MB limit for Claude
+              const input = {
+                prompt: `Extract all text from this document. Return only the text content without commentary.`,
+                image: dataUrl,
+                max_tokens: 8192
+              }
+
+              let claudeResponse = ''
+              for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
+                claudeResponse += event
+              }
+
+              if (claudeResponse.trim().length > 10) {
+                extractedText = claudeResponse.trim()
+                extractionSuccessful = true
+                console.log(`✅ Claude extraction successful: ${extractedText.length} characters`)
+              }
+            } else {
+              console.log('⚠️ File too large for Claude fallback')
+            }
+          } catch (claudeError) {
+            console.error('❌ Claude extraction also failed:', claudeError)
+          }
+        }
+        
+        // Method 3: Basic file info fallback
+        if (!extractionSuccessful) {
+          console.log('🔄 Using basic file info fallback')
+          extractedText = `Document: ${fileName}
+
+File Type: ${fileType}
+File Size: ${fileSizeKB}KB
+Upload Date: ${new Date().toISOString()}
+
+This document has been successfully uploaded to your project. While automatic text extraction encountered issues, the file is stored and available for reference. You can:
+
+1. Ask questions about this document in your project chat
+2. Reference it by filename in conversations
+3. Try re-uploading if the file may be corrupted
+4. Use a different file format if possible
+
+The AI assistant will do its best to help with questions about this document based on the filename and context you provide.`
+        }
       }
 
       // Clean up the extracted text
