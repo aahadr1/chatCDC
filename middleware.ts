@@ -11,62 +11,73 @@ export async function middleware(req: NextRequest) {
     error: userError
   } = await supabase.auth.getUser();
 
-  // Log detailed authentication context
-  console.log('Middleware Authentication Check', {
-    timestamp: new Date().toISOString(),
-    path: req.nextUrl.pathname,
-    userPresent: !!user,
-    userError: userError?.message || 'none'
-  });
-
   const { pathname, search } = req.nextUrl;
   
-  // Define route types with stricter authentication requirements
-  const protectedRoutes = [
-    '/chat', 
-    '/projects', 
-    '/settings', 
-    '/profile'
-  ];
+  // Controlled route configurations
+  const routes = {
+    protected: ['/chat', '/projects', '/settings', '/profile'],
+    auth: ['/login', '/signup', '/auth'],
+    public: ['/_next', '/static', '/favicon.ico', '/images']
+  };
 
-  const authRoutes = ['/login', '/signup', '/auth'];
-  
-  const isPublicAsset =
-    pathname.startsWith('/_next') ||
-    pathname.startsWith('/static') ||
-    pathname === '/favicon.ico' ||
-    pathname.startsWith('/images');
-
-  // Always allow public assets
+  // Check if the current path is a public asset
+  const isPublicAsset = routes.public.some(route => pathname.startsWith(route));
   if (isPublicAsset) return res;
 
-  // Strict authentication check for protected routes
-  if (protectedRoutes.some(route => pathname.startsWith(route))) {
+  // Logging with reduced verbosity
+  const logRedirection = (type: string, details: Record<string, any> = {}) => {
+    console.log(`Middleware Redirection - ${type}`, {
+      path: pathname,
+      timestamp: new Date().toISOString(),
+      ...details
+    });
+  };
+
+  // Protected routes require authentication
+  const isProtectedRoute = routes.protected.some(route => pathname.startsWith(route));
+  if (isProtectedRoute) {
     if (!user) {
-      console.warn('Unauthorized access attempt to protected route', { pathname });
+      logRedirection('UNAUTHORIZED_ACCESS', { 
+        attemptedPath: pathname 
+      });
+      
       const redirectUrl = req.nextUrl.clone();
       redirectUrl.pathname = '/login';
       redirectUrl.searchParams.set('redirectedFrom', pathname + (search || ''));
+      
       return NextResponse.redirect(redirectUrl);
     }
   }
 
-  // Redirect authenticated users away from auth routes
-  if (user && authRoutes.some(route => pathname.startsWith(route))) {
+  // Authentication routes handling
+  const isAuthRoute = routes.auth.some(route => pathname.startsWith(route));
+  if (isAuthRoute && user) {
     const dest = req.nextUrl.searchParams.get('redirectedFrom') || '/chat';
+    
+    logRedirection('AUTHENTICATED_USER_ON_AUTH_ROUTE', { 
+      destination: dest 
+    });
+
     const redirectUrl = req.nextUrl.clone();
     redirectUrl.pathname = dest;
     redirectUrl.search = '';
-    
-    console.log('Redirecting authenticated user', {
-      from: pathname,
-      to: redirectUrl.pathname
-    });
 
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Default case: allow the request
+  // Home route special handling
+  if (pathname === '/') {
+    if (user) {
+      logRedirection('HOME_ROUTE_AUTHENTICATED', { 
+        destination: '/chat' 
+      });
+      
+      const redirectUrl = req.nextUrl.clone();
+      redirectUrl.pathname = '/chat';
+      return NextResponse.redirect(redirectUrl);
+    }
+  }
+
   return res;
 }
 
