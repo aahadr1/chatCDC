@@ -126,17 +126,6 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
       }
     });
 
-    // Wrap potential error-prone methods with global error handling
-    const originalSignIn = _supabaseClient.auth.signIn;
-    _supabaseClient.auth.signIn = async (...args) => {
-      try {
-        return await originalSignIn.apply(_supabaseClient.auth, args);
-      } catch (error) {
-        logSupabaseError('Sign In Error', error);
-        throw error;
-      }
-    };
-
     return _supabaseClient;
   } catch (error) {
     logSupabaseError('Client Creation Error', error);
@@ -151,6 +140,22 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
  */
 export function getSafeSupabaseClient(): SupabaseClient | null {
   return createBrowserSupabaseClient();
+}
+
+/**
+ * Wrap Supabase authentication methods with error handling
+ * @param method The authentication method to wrap
+ * @returns A wrapped version of the method with error logging
+ */
+export function wrapAuthMethod<T extends (...args: any[]) => Promise<any>>(method: T): T {
+  return (async (...args: Parameters<T>): Promise<ReturnType<T>> => {
+    try {
+      return await method(...args);
+    } catch (error) {
+      logSupabaseError('Authentication Method Error', error);
+      throw error;
+    }
+  }) as T;
 }
 
 // Expose a method to reset the client (useful for testing or specific scenarios)
