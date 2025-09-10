@@ -9,47 +9,88 @@ export async function GET(request: NextRequest) {
   const error = requestUrl.searchParams.get('error');
   const error_description = requestUrl.searchParams.get('error_description');
 
-  // Handle test request
-  if (requestUrl.pathname.endsWith('/test')) {
-    return NextResponse.json({
-      status: 'callback_route_working',
-      timestamp: new Date().toISOString(),
-      url: request.url,
-      method: 'GET'
-    });
-  }
-
-  // Log for debugging
-  console.log('Auth callback received:', {
-    code: code ? 'present' : 'missing',
-    error,
-    error_description,
+  // Comprehensive logging for debugging
+  console.log('Authentication Callback Received', {
+    timestamp: new Date().toISOString(),
     url: request.url,
-    pathname: requestUrl.pathname
+    method: 'GET',
+    code: code ? 'present' : 'missing',
+    error: error || 'none',
+    error_description: error_description || 'none'
   });
 
-  if (error) {
-    console.error('Auth error:', error, error_description);
-    return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(error_description || error)}`, request.url));
-  }
-
-  if (code) {
-    try {
-      const supabase = createRouteHandlerClient({ cookies });
-      const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
-
-      if (sessionError) {
-        console.error('Session exchange error:', sessionError);
-        return NextResponse.redirect(new URL(`/login?error=${encodeURIComponent(sessionError.message)}`, request.url));
+  // Handle test route for health checks
+  if (requestUrl.pathname.endsWith('/test')) {
+    return NextResponse.json({
+      status: 'callback_route_operational',
+      timestamp: new Date().toISOString(),
+      details: {
+        method: 'GET',
+        path: requestUrl.pathname
       }
-
-      console.log('Session created successfully');
-    } catch (err) {
-      console.error('Unexpected error:', err);
-      return NextResponse.redirect(new URL('/login?error=unexpected_error', request.url));
-    }
+    }, { status: 200 });
   }
 
-  // URL to redirect to after sign in process completes
-  return NextResponse.redirect(new URL('/', request.url));
+  // Error handling for authentication errors
+  if (error) {
+    console.error('Authentication Error', {
+      error,
+      description: error_description
+    });
+
+    return NextResponse.redirect(new URL(
+      `/login?error=${encodeURIComponent(error_description || error)}`, 
+      request.url
+    ), { status: 302 });
+  }
+
+  // Validate authorization code
+  if (!code) {
+    console.warn('No authorization code provided');
+    return NextResponse.redirect(new URL(
+      '/login?error=missing_authorization_code', 
+      request.url
+    ), { status: 400 });
+  }
+
+  try {
+    // Create Supabase client for server-side operations
+    const supabase = createRouteHandlerClient({ cookies });
+
+    // Exchange authorization code for session
+    const { error: sessionError } = await supabase.auth.exchangeCodeForSession(code);
+
+    // Handle session exchange errors
+    if (sessionError) {
+      console.error('Session Exchange Error', {
+        message: sessionError.message,
+        code: sessionError.code
+      });
+
+      return NextResponse.redirect(new URL(
+        `/login?error=${encodeURIComponent(sessionError.message)}`, 
+        request.url
+      ), { status: 302 });
+    }
+
+    // Log successful authentication
+    console.log('Authentication Successful', {
+      timestamp: new Date().toISOString(),
+      message: 'User session created'
+    });
+
+    // Redirect to home page or last visited page
+    return NextResponse.redirect(new URL('/', request.url), { status: 302 });
+
+  } catch (unexpectedError) {
+    // Catch any unexpected errors during authentication
+    console.error('Unexpected Authentication Error', {
+      error: unexpectedError instanceof Error ? unexpectedError.message : String(unexpectedError)
+    });
+
+    return NextResponse.redirect(new URL(
+      '/login?error=unexpected_authentication_error', 
+      request.url
+    ), { status: 500 });
+  }
 }
