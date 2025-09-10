@@ -223,6 +223,16 @@ export default function ProjectChatPage() {
 
       if (error) {
         console.error('❌ Error creating conversation:', error)
+        
+        // If table doesn't exist, create a temporary conversation ID
+        if (error.message.includes('relation "public.project_conversations" does not exist')) {
+          console.log('⚠️ project_conversations table does not exist, using temporary ID')
+          const tempConversationId = 'temp-' + Date.now()
+          setCurrentConversationId(tempConversationId)
+          setMessages([])
+          return
+        }
+        
         throw error
       }
 
@@ -242,6 +252,12 @@ export default function ProjectChatPage() {
       console.log('✅ Conversation state updated')
     } catch (error) {
       console.error('❌ Error creating conversation:', error)
+      
+      // Fallback: create a temporary conversation
+      console.log('🔄 Creating temporary conversation as fallback')
+      const tempConversationId = 'temp-' + Date.now()
+      setCurrentConversationId(tempConversationId)
+      setMessages([])
     }
   }
 
@@ -331,40 +347,73 @@ export default function ProjectChatPage() {
 
     try {
       // Save user message to database
-      const { data: userMessageData, error: userMessageError } = await supabase
-        .from('project_messages')
-        .insert({
-          conversation_id: currentConversationId,
-          project_id: projectId,
-          user_id: user.id,
+      let userMessage: Message
+      
+      if (currentConversationId.startsWith('temp-')) {
+        // Use temporary message for fallback
+        console.log('📝 Using temporary message (no database)')
+        userMessage = {
+          id: 'temp-user-' + Date.now(),
+          content: messageContent,
           role: 'user',
-          content: messageContent
-        })
-        .select()
-        .single()
+          timestamp: new Date()
+        }
+      } else {
+        const { data: userMessageData, error: userMessageError } = await supabase
+          .from('project_messages')
+          .insert({
+            conversation_id: currentConversationId,
+            project_id: projectId,
+            user_id: user.id,
+            role: 'user',
+            content: messageContent
+          })
+          .select()
+          .single()
 
-      if (userMessageError) throw userMessageError
-
-      const userMessage: Message = {
-        id: userMessageData.id,
-        content: userMessageData.content,
-        role: 'user',
-        timestamp: new Date(userMessageData.created_at)
+        if (userMessageError) {
+          console.error('❌ Error saving user message:', userMessageError)
+          
+          // If table doesn't exist, use temporary message
+          if (userMessageError.message.includes('relation "public.project_messages" does not exist')) {
+            console.log('⚠️ project_messages table does not exist, using temporary message')
+            userMessage = {
+              id: 'temp-user-' + Date.now(),
+              content: messageContent,
+              role: 'user',
+              timestamp: new Date()
+            }
+          } else {
+            throw userMessageError
+          }
+        } else {
+          userMessage = {
+            id: userMessageData.id,
+            content: userMessageData.content,
+            role: 'user',
+            timestamp: new Date(userMessageData.created_at)
+          }
+        }
       }
 
       // Update conversation title if it's the first message
-      if (messages.length === 0) {
+      if (messages.length === 0 && !currentConversationId.startsWith('temp-')) {
         const title = generateTitle(messageContent)
-        await supabase
-          .from('project_conversations')
-          .update({ title })
-          .eq('id', currentConversationId)
+        try {
+          await supabase
+            .from('project_conversations')
+            .update({ title })
+            .eq('id', currentConversationId)
 
-        setConversations(prev => prev.map(conv => 
-          conv.id === currentConversationId 
-            ? { ...conv, title, updated_at: new Date().toISOString() }
-            : conv
-        ))
+          setConversations(prev => prev.map(conv => 
+            conv.id === currentConversationId 
+              ? { ...conv, title, updated_at: new Date().toISOString() }
+              : conv
+          ))
+        } catch (error) {
+          console.error('❌ Error updating conversation title:', error)
+          // Continue without updating title
+        }
       }
 
       const newMessages = [...messages, userMessage]
@@ -467,35 +516,70 @@ export default function ProjectChatPage() {
       }
 
       // Save assistant message to database
-      const { data: assistantMessageData, error: assistantMessageError } = await supabase
-        .from('project_messages')
-        .insert({
-          conversation_id: currentConversationId,
-          project_id: projectId,
-          user_id: user.id,
+      let finalAssistantMessage: Message
+      
+      if (currentConversationId.startsWith('temp-')) {
+        // Use temporary message for fallback
+        console.log('📝 Using temporary assistant message (no database)')
+        finalAssistantMessage = {
+          id: 'temp-assistant-' + Date.now(),
+          content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.',
           role: 'assistant',
-          content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.'
-        })
-        .select()
-        .single()
+          timestamp: new Date()
+        }
+      } else {
+        const { data: assistantMessageData, error: assistantMessageError } = await supabase
+          .from('project_messages')
+          .insert({
+            conversation_id: currentConversationId,
+            project_id: projectId,
+            user_id: user.id,
+            role: 'assistant',
+            content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.'
+          })
+          .select()
+          .single()
 
-      if (assistantMessageError) throw assistantMessageError
-
-      const finalAssistantMessage: Message = {
-        id: assistantMessageData.id,
-        content: assistantMessageData.content,
-        role: 'assistant',
-        timestamp: new Date(assistantMessageData.created_at)
+        if (assistantMessageError) {
+          console.error('❌ Error saving assistant message:', assistantMessageError)
+          
+          // If table doesn't exist, use temporary message
+          if (assistantMessageError.message.includes('relation "public.project_messages" does not exist')) {
+            console.log('⚠️ project_messages table does not exist, using temporary assistant message')
+            finalAssistantMessage = {
+              id: 'temp-assistant-' + Date.now(),
+              content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.',
+              role: 'assistant',
+              timestamp: new Date()
+            }
+          } else {
+            throw assistantMessageError
+          }
+        } else {
+          finalAssistantMessage = {
+            id: assistantMessageData.id,
+            content: assistantMessageData.content,
+            role: 'assistant',
+            timestamp: new Date(assistantMessageData.created_at)
+          }
+        }
       }
 
       const finalMessages = [...newMessages, finalAssistantMessage]
       setMessages(finalMessages)
 
       // Update conversation updated_at
-      await supabase
-        .from('project_conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', currentConversationId)
+      if (!currentConversationId.startsWith('temp-')) {
+        try {
+          await supabase
+            .from('project_conversations')
+            .update({ updated_at: new Date().toISOString() })
+            .eq('id', currentConversationId)
+        } catch (error) {
+          console.error('❌ Error updating conversation timestamp:', error)
+          // Continue without updating timestamp
+        }
+      }
 
     } catch (error) {
       console.error('Error in project chat:', error)
