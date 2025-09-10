@@ -119,7 +119,7 @@ export default function TestAuthPage() {
                   const data = await response.json();
                   alert(`Callback route status: ${JSON.stringify(data, null, 2)}`);
                 } catch (error) {
-                  alert(`Callback route error: ${error.message}`);
+                  alert(`Callback route error: ${error instanceof Error ? error.message : String(error)}`);
                 }
               }}
               className="block px-3 py-2 bg-gray-500 text-white rounded hover:bg-gray-600 text-sm"
