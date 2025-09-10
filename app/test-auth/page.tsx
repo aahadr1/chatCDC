@@ -23,14 +23,6 @@ export default function TestAuthPage() {
         
         // Check session
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-        
-        // Get auth URL
-        const { data: urlData } = await supabase.auth.getOAuthUrl({
-          provider: 'email',
-          options: {
-            redirectTo: `${window.location.origin}/auth/callback`
-          }
-        });
 
         setStatus({
           user: user || null,
@@ -45,7 +37,7 @@ export default function TestAuthPage() {
           timestamp: new Date().toISOString()
         });
       } catch (error) {
-        setStatus({ error: error.message });
+        setStatus({ error: error instanceof Error ? error.message : 'Unknown error' });
       } finally {
         setLoading(false);
       }
