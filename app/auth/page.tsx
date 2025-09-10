@@ -26,7 +26,7 @@ export default function AuthPage() {
       if (token) {
         apiClient.setAccessToken(token)
         const { data, error } = await apiClient.getCurrentUser()
-        if (!error && data?.user) {
+        if (!error && data && 'user' in data) {
           router.push('/chat')
         } else {
           // Token is invalid, remove it
