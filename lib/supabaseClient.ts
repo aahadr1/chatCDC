@@ -1,4 +1,4 @@
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient, type AuthChangeEvent } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -102,18 +102,24 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
     });
 
     // Add custom error handling for authentication
-    _supabaseClient.auth.onAuthStateChange((event, session) => {
+    _supabaseClient.auth.onAuthStateChange((event: AuthChangeEvent, session) => {
       switch (event) {
         case 'SIGNED_IN':
           console.log('User signed in successfully', { 
             userId: session?.user?.id 
           });
           break;
-        case 'SIGN_OUT':
+        case 'SIGNED_OUT':
           console.log('User signed out');
           break;
-        case 'AUTH_ERROR':
-          logSupabaseError('Authentication State Change', session);
+        case 'PASSWORD_RECOVERY':
+          console.log('Password recovery initiated');
+          break;
+        case 'TOKEN_REFRESHED':
+          console.log('Token refreshed');
+          break;
+        case 'USER_UPDATED':
+          console.log('User profile updated');
           break;
         default:
           console.log('Auth state changed:', event);
