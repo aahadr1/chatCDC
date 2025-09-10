@@ -169,33 +169,43 @@ export default function ChatPage() {
       let assistantMessage = ''
 
       if (reader) {
+        let buffer = ''
+        
         while (true) {
           const { done, value } = await reader.read()
           if (done) break
 
-          const chunk = decoder.decode(value)
-          const lines = chunk.split('\n')
+          buffer += decoder.decode(value, { stream: true })
+          const lines = buffer.split('\n')
+          
+          // Keep the last potentially incomplete line in buffer
+          buffer = lines.pop() || ''
 
           for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6))
-                if (data.content) {
-                  assistantMessage += data.content
-                  // Update the assistant message in real-time
-                  const tempMessages = [...newMessages, {
-                    id: 'temp-assistant',
-                    content: assistantMessage,
-                    role: 'assistant' as const,
-                    timestamp: new Date()
-                  }]
-                  setMessages(tempMessages)
+            const trimmedLine = line.trim()
+            if (trimmedLine.startsWith('data: ')) {
+              const dataStr = trimmedLine.slice(6).trim()
+              if (dataStr && dataStr !== '[DONE]') {
+                try {
+                  const data = JSON.parse(dataStr)
+                  if (data.content && typeof data.content === 'string') {
+                    assistantMessage += data.content
+                    // Update the assistant message in real-time
+                    const tempMessages = [...newMessages, {
+                      id: 'temp-assistant',
+                      content: assistantMessage,
+                      role: 'assistant' as const,
+                      timestamp: new Date()
+                    }]
+                    setMessages(tempMessages)
+                  }
+                  if (data.done) {
+                    break
+                  }
+                } catch (e) {
+                  // Ignore malformed JSON
+                  console.warn('Failed to parse SSE data:', dataStr)
                 }
-                if (data.done) {
-                  break
-                }
-              } catch (e) {
-                // Ignore parsing errors
               }
             }
           }

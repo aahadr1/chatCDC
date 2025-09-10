@@ -27,78 +27,6 @@ export async function POST(request: NextRequest) {
 
     // Create a streaming response
     const encoder = new TextEncoder()
-    const normalizeToText = (chunk: any): string => {
-      if (chunk == null) return ''
-      // String events may contain one or more concatenated JSON objects
-      if (typeof chunk === 'string') {
-        const resultParts: string[] = []
-        let i = 0
-        let depth = 0
-        let inString = false
-        let escape = false
-        let start = -1
-        const s = chunk
-        while (i < s.length) {
-          const ch = s[i]
-          if (inString) {
-            if (escape) {
-              escape = false
-            } else if (ch === '\\') {
-              escape = true
-            } else if (ch === '"') {
-              inString = false
-            }
-            i++
-            continue
-          }
-          if (ch === '"') {
-            inString = true
-          } else if (ch === '{') {
-            if (depth === 0) start = i
-            depth++
-          } else if (ch === '}') {
-            depth--
-            if (depth === 0 && start >= 0) {
-              const jsonStr = s.slice(start, i + 1)
-              try {
-                const obj = JSON.parse(jsonStr)
-                if (obj && typeof obj === 'object' && 'event' in obj) {
-                  if (obj.event === 'output' && typeof obj.data === 'string') {
-                    resultParts.push(obj.data)
-                  }
-                } else if (typeof obj?.content === 'string') {
-                  resultParts.push(obj.content)
-                } else if (typeof obj?.text === 'string') {
-                  resultParts.push(obj.text)
-                } else if (typeof obj?.output === 'string') {
-                  resultParts.push(obj.output)
-                }
-              } catch {
-                // ignore malformed JSON fragments
-              }
-              start = -1
-            }
-          }
-          i++
-        }
-        // If we extracted any outputs from JSON, return them; otherwise treat as plain text
-        const joined = resultParts.join('')
-        if (joined) return joined
-        return s
-      }
-      if (typeof chunk === 'object') {
-        // Structured Replicate event
-        if (typeof (chunk as any).event === 'string') {
-          if ((chunk as any).event === 'output' && typeof (chunk as any).data === 'string') return (chunk as any).data
-          return ''
-        }
-        if (typeof (chunk as any).content === 'string') return (chunk as any).content
-        if (typeof (chunk as any).text === 'string') return (chunk as any).text
-        if (typeof (chunk as any).output === 'string') return (chunk as any).output
-        try { return JSON.stringify(chunk) } catch { return String(chunk) }
-      }
-      return String(chunk)
-    }
     const stream = new ReadableStream({
       async start(controller) {
         try {
@@ -119,8 +47,11 @@ export async function POST(request: NextRequest) {
           const stream = await replicate.stream("openai/gpt-5", { input })
 
           for await (const event of stream) {
-            const text = normalizeToText(event)
-            if (text) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`))
+            // GPT-5 via Replicate returns plain strings as per the output schema
+            const eventStr = String(event)
+            if (eventStr && eventStr.trim()) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: eventStr })}\n\n`))
+            }
           }
 
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
@@ -146,8 +77,11 @@ export async function POST(request: NextRequest) {
             })
 
             for await (const event of fallbackStream) {
-              const text = normalizeToText(event)
-              if (text) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: text })}\n\n`))
+              // Llama 2 also returns plain strings
+              const eventStr = String(event)
+              if (eventStr && eventStr.trim()) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: eventStr })}\n\n`))
+              }
             }
 
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
