@@ -1,7 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Plus, Sidebar, Send, Loader2, Menu, X } from 'lucide-react'
+import { MessageCircle, Plus, Send, Loader2, Menu, X, LogOut, User } from 'lucide-react'
+import { supabase, signOut, getCurrentUser } from '@/lib/supabaseClient'
+import { useRouter } from 'next/navigation'
 
 interface Message {
   id: string
@@ -18,7 +20,14 @@ interface Conversation {
   updatedAt: Date
 }
 
+interface User {
+  id: string
+  email: string
+  full_name?: string
+}
+
 export default function ChatPage() {
+  const [user, setUser] = useState<User | null>(null)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -27,57 +36,153 @@ export default function ChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const router = useRouter()
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Initialize with a default conversation
+  // Initialize user and load conversations
   useEffect(() => {
-    const defaultConversation: Conversation = {
-      id: crypto.randomUUID(),
-      title: 'New Chat',
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }
-    setConversations([defaultConversation])
-    setCurrentConversationId(defaultConversation.id)
-  }, [])
-
-  const createNewConversation = () => {
-    const newConversation: Conversation = {
-      id: crypto.randomUUID(),
-      title: 'New Chat',
-      messages: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
+    const initializeUser = async () => {
+      const { user } = await getCurrentUser()
+      if (user) {
+        setUser({
+          id: user.id,
+          email: user.email!,
+          full_name: user.user_metadata?.full_name || user.user_metadata?.display_name
+        })
+        await loadConversations(user.id)
+      } else {
+        router.push('/auth')
+      }
     }
     
-    setConversations(prev => [newConversation, ...prev])
-    setCurrentConversationId(newConversation.id)
-    setMessages([])
-  }
+    initializeUser()
+  }, [router])
 
-  const switchConversation = (conversationId: string) => {
-    const conversation = conversations.find(c => c.id === conversationId)
-    if (conversation) {
-      setCurrentConversationId(conversationId)
-      setMessages(conversation.messages)
+  // Load conversations from database
+  const loadConversations = async (userId: string) => {
+    try {
+      const { data: conversationsData, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false })
+
+      if (error) throw error
+
+      if (conversationsData && conversationsData.length > 0) {
+        const conversations = conversationsData.map(conv => ({
+          id: conv.id,
+          title: conv.title,
+          messages: [],
+          createdAt: new Date(conv.created_at),
+          updatedAt: new Date(conv.updated_at)
+        }))
+        setConversations(conversations)
+        setCurrentConversationId(conversations[0].id)
+        await loadMessages(conversations[0].id)
+      } else {
+        // Create default conversation if none exist
+        await createNewConversation()
+      }
+    } catch (error) {
+      console.error('Error loading conversations:', error)
     }
   }
 
-  const deleteConversation = (conversationId: string) => {
-    setConversations(prev => prev.filter(c => c.id !== conversationId))
-    if (currentConversationId === conversationId) {
-      const remaining = conversations.filter(c => c.id !== conversationId)
-      if (remaining.length > 0) {
-        setCurrentConversationId(remaining[0].id)
-        setMessages(remaining[0].messages)
-      } else {
-        createNewConversation()
+  // Load messages for a conversation
+  const loadMessages = async (conversationId: string) => {
+    try {
+      const { data: messagesData, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true })
+
+      if (error) throw error
+
+      if (messagesData) {
+        const messages = messagesData.map(msg => ({
+          id: msg.id,
+          content: msg.content,
+          role: msg.role as 'user' | 'assistant',
+          timestamp: new Date(msg.created_at)
+        }))
+        setMessages(messages)
       }
+    } catch (error) {
+      console.error('Error loading messages:', error)
+    }
+  }
+
+  const createNewConversation = async () => {
+    if (!user) return
+
+    try {
+      const { data, error } = await supabase
+        .from('conversations')
+        .insert({
+          title: 'New Chat',
+          user_id: user.id
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const newConversation: Conversation = {
+        id: data.id,
+        title: data.title,
+        messages: [],
+        createdAt: new Date(data.created_at),
+        updatedAt: new Date(data.updated_at)
+      }
+
+      setConversations(prev => [newConversation, ...prev])
+      setCurrentConversationId(newConversation.id)
+      setMessages([])
+    } catch (error) {
+      console.error('Error creating conversation:', error)
+    }
+  }
+
+  const switchConversation = async (conversationId: string) => {
+    setCurrentConversationId(conversationId)
+    await loadMessages(conversationId)
+  }
+
+  const deleteConversation = async (conversationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversationId)
+
+      if (error) throw error
+
+      setConversations(prev => prev.filter(c => c.id !== conversationId))
+      
+      if (currentConversationId === conversationId) {
+        const remaining = conversations.filter(c => c.id !== conversationId)
+        if (remaining.length > 0) {
+          setCurrentConversationId(remaining[0].id)
+          await loadMessages(remaining[0].id)
+        } else {
+          await createNewConversation()
+        }
+      }
+    } catch (error) {
+      console.error('Error deleting conversation:', error)
+    }
+  }
+
+  const handleSignOut = async () => {
+    const { error } = await signOut()
+    if (!error) {
+      router.push('/auth')
     }
   }
 
@@ -110,36 +215,11 @@ export default function ChatPage() {
   }
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || loading || !currentConversationId) return
+    if (!inputMessage.trim() || loading || !currentConversationId || !user) return
 
     const messageContent = inputMessage.trim()
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: messageContent,
-      role: 'user',
-      timestamp: new Date()
-    }
-
-    const newMessages = [...messages, userMessage]
-    setMessages(newMessages)
     setInputMessage('')
     setLoading(true)
-
-    // Update conversation title if it's the first message
-    if (messages.length === 0) {
-      const title = generateTitle(messageContent)
-      setConversations(prev => prev.map(conv => 
-        conv.id === currentConversationId 
-          ? { ...conv, title, messages: newMessages, updatedAt: new Date() }
-          : conv
-      ))
-    } else {
-      setConversations(prev => prev.map(conv => 
-        conv.id === currentConversationId 
-          ? { ...conv, messages: newMessages, updatedAt: new Date() }
-          : conv
-      ))
-    }
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -147,16 +227,59 @@ export default function ChatPage() {
     }
 
     try {
+      // Save user message to database
+      const { data: userMessageData, error: userMessageError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: currentConversationId,
+          user_id: user.id,
+          role: 'user',
+          content: messageContent
+        })
+        .select()
+        .single()
+
+      if (userMessageError) throw userMessageError
+
+      const userMessage: Message = {
+        id: userMessageData.id,
+        content: userMessageData.content,
+        role: 'user',
+        timestamp: new Date(userMessageData.created_at)
+      }
+
+      // Update conversation title if it's the first message
+      if (messages.length === 0) {
+        const title = generateTitle(messageContent)
+        await supabase
+          .from('conversations')
+          .update({ title })
+          .eq('id', currentConversationId)
+
+        setConversations(prev => prev.map(conv => 
+          conv.id === currentConversationId 
+            ? { ...conv, title, updatedAt: new Date() }
+            : conv
+        ))
+      }
+
+      const newMessages = [...messages, userMessage]
+      setMessages(newMessages)
+
+      // Get AI response
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
         },
         body: JSON.stringify({
           messages: newMessages.map(msg => ({
             role: msg.role,
             content: msg.content
-          }))
+          })),
+          conversationId: currentConversationId,
+          userId: user.id
         }),
       })
 
@@ -212,36 +335,45 @@ export default function ChatPage() {
         }
       }
 
-      // Final update with complete message
-      const finalMessages = [...newMessages, {
-        id: (Date.now() + 1).toString(),
-        content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.',
-        role: 'assistant' as const,
-        timestamp: new Date()
-      }]
-      
+      // Save assistant message to database
+      const { data: assistantMessageData, error: assistantMessageError } = await supabase
+        .from('messages')
+        .insert({
+          conversation_id: currentConversationId,
+          user_id: user.id,
+          role: 'assistant',
+          content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.'
+        })
+        .select()
+        .single()
+
+      if (assistantMessageError) throw assistantMessageError
+
+      const finalAssistantMessage: Message = {
+        id: assistantMessageData.id,
+        content: assistantMessageData.content,
+        role: 'assistant',
+        timestamp: new Date(assistantMessageData.created_at)
+      }
+
+      const finalMessages = [...newMessages, finalAssistantMessage]
       setMessages(finalMessages)
-      setConversations(prev => prev.map(conv => 
-        conv.id === currentConversationId 
-          ? { ...conv, messages: finalMessages, updatedAt: new Date() }
-          : conv
-      ))
+
+      // Update conversation updated_at
+      await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', currentConversationId)
 
     } catch (error) {
-      console.error('Error getting AI response:', error)
+      console.error('Error in chat:', error)
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: 'error-' + Date.now(),
         content: 'Sorry, I encountered an error. Please check your API configuration and try again.',
         role: 'assistant',
         timestamp: new Date()
       }
-      const finalMessages = [...newMessages, errorMessage]
-      setMessages(finalMessages)
-      setConversations(prev => prev.map(conv => 
-        conv.id === currentConversationId 
-          ? { ...conv, messages: finalMessages, updatedAt: new Date() }
-          : conv
-      ))
+      setMessages(prev => [...prev, errorMessage])
     } finally {
       setLoading(false)
     }
@@ -300,6 +432,30 @@ export default function ChatPage() {
             </div>
           ))}
         </div>
+
+        {/* User Profile */}
+        {user && (
+          <div className="p-4 border-t border-gray-800">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-white" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">
+                  {user.full_name || user.email}
+                </p>
+                <p className="text-xs text-gray-400 truncate">{user.email}</p>
+              </div>
+              <button
+                onClick={handleSignOut}
+                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
+                title="Sign out"
+              >
+                <LogOut className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Chat Area */}

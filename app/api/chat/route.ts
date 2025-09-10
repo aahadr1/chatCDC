@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Replicate from 'replicate'
+import { createServerComponentClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -8,7 +10,17 @@ interface Message {
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages } = await request.json()
+    const { messages, conversationId, userId } = await request.json()
+
+    // Create Supabase client for server-side operations
+    const cookieStore = cookies()
+    const supabase = createServerComponentClient({ cookies: () => cookieStore })
+
+    // Verify user authentication
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     // Check if API token is configured
     if (!process.env.REPLICATE_API_TOKEN || process.env.REPLICATE_API_TOKEN === 'your_replicate_api_token_here') {
