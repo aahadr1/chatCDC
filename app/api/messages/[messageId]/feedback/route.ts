@@ -40,7 +40,7 @@ export async function PUT(
       .eq('id', messageId)
       .single();
 
-    if (msgError || !message || message.conversations.user_id !== user.id) {
+    if (msgError || !message || (message.conversations as any).user_id !== user.id) {
       return NextResponse.json(
         { error: 'Message not found' },
         { status: 404 }
