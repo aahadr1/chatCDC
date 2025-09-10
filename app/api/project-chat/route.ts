@@ -108,12 +108,13 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
               responseText = output.join('')
             } else if (output && typeof output === 'object') {
               // Try to extract text from various possible structures
-              if (output.text) {
-                responseText = String(output.text)
-              } else if (output.content) {
-                responseText = String(output.content)
-              } else if (output.response) {
-                responseText = String(output.response)
+              const outputObj = output as any // Type assertion to handle unknown structure
+              if (outputObj.text) {
+                responseText = String(outputObj.text)
+              } else if (outputObj.content) {
+                responseText = String(outputObj.content)
+              } else if (outputObj.response) {
+                responseText = String(outputObj.response)
               } else {
                 responseText = JSON.stringify(output)
               }
