@@ -12,11 +12,12 @@ export async function middleware(req: NextRequest) {
   }
 
   // Debug: Log all cookies for troubleshooting
-  const allCookies = Array.from(req.cookies.keys())
-  console.log('All cookies:', allCookies)
+  const cookieEntries = Array.from(req.cookies.getAll())
+  const allCookieNames = cookieEntries.map(cookie => cookie.name)
+  console.log('All cookies:', allCookieNames)
 
   // Check for Supabase session cookies (more comprehensive check)
-  const hasSessionCookie = allCookies.some(key => 
+  const hasSessionCookie = allCookieNames.some(key => 
     key.includes('supabase') || 
     key.includes('sb-') ||
     key.startsWith('auth-token') ||
