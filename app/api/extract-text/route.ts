@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import Replicate from 'replicate'
-import pdf from 'pdf-parse'
-import mammoth from 'mammoth'
-import * as XLSX from 'xlsx'
 
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN!,
@@ -47,6 +44,9 @@ export async function POST(request: NextRequest) {
     let extractedText = ''
 
     try {
+      // For now, use Replicate Claude to extract text from files
+      // This approach works for all file types and avoids build issues with native libraries
+      
       // Download the file
       const fileResponse = await fetch(fileUrl)
       if (!fileResponse.ok) {
@@ -54,47 +54,29 @@ export async function POST(request: NextRequest) {
       }
 
       const fileBuffer = await fileResponse.arrayBuffer()
-      const buffer = Buffer.from(fileBuffer)
+      
+      // Convert buffer to base64 for Claude
+      const base64File = Buffer.from(fileBuffer).toString('base64')
+      const dataUrl = `data:${fileType};base64,${base64File}`
 
-      // Extract text based on file type
-      if (fileType === 'application/pdf') {
-        // Extract text from PDF
-        const data = await pdf(buffer)
-        extractedText = data.text
-      } else if (fileType === 'application/msword' || 
-                 fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
-        // Extract text from Word documents
-        const result = await mammoth.extractRawText({ buffer })
-        extractedText = result.value
-      } else if (fileType === 'application/vnd.ms-excel' || 
-                 fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-        // Extract text from Excel files
-        const workbook = XLSX.read(buffer, { type: 'buffer' })
-        let allText = ''
-        
-        workbook.SheetNames.forEach(sheetName => {
-          const worksheet = workbook.Sheets[sheetName]
-          const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 })
-          
-          allText += `\n--- Sheet: ${sheetName} ---\n`
-          jsonData.forEach((row: any) => {
-            if (Array.isArray(row) && row.length > 0) {
-              allText += row.filter(cell => cell !== null && cell !== undefined).join('\t') + '\n'
-            }
-          })
-        })
-        
-        extractedText = allText
-      } else if (fileType === 'text/plain' || fileType === 'text/csv') {
-        // Extract text from plain text files
-        extractedText = buffer.toString('utf-8')
-      } else if (fileType === 'application/vnd.ms-powerpoint' || 
-                 fileType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
-        // For PowerPoint files, use Replicate to extract text (Claude can read images)
-        // This is a fallback - you might want to use a specialized library for PPT
-        extractedText = `PowerPoint file: ${fileName}\n[Content extraction pending - please use specialized tools for PowerPoint files]`
-      } else {
-        throw new Error(`Unsupported file type: ${fileType}`)
+      // Use Claude to extract text from the document
+      const input = {
+        prompt: `Please extract all the text content from this document. Return only the extracted text without any additional commentary or formatting. If this is a structured document (like a spreadsheet or table), preserve the structure using tabs and line breaks.`,
+        image: dataUrl,
+        max_tokens: 8192
+      }
+
+      let claudeResponse = ''
+      for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
+        claudeResponse += event
+      }
+
+      extractedText = claudeResponse.trim()
+
+      // Fallback for text files if Claude extraction fails
+      if ((!extractedText || extractedText.length < 10) && 
+          (fileType === 'text/plain' || fileType === 'text/csv')) {
+        extractedText = Buffer.from(fileBuffer).toString('utf-8')
       }
 
       // Clean up the extracted text
