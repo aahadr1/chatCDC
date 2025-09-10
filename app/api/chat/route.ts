@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import Replicate from 'replicate'
-import { createServerComponentClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { getAuthenticatedUser } from '@/lib/supabaseServer'
 
 interface Message {
   role: 'user' | 'assistant' | 'system'
@@ -12,12 +11,8 @@ export async function POST(request: NextRequest) {
   try {
     const { messages, conversationId, userId } = await request.json()
 
-    // Create Supabase client for server-side operations
-    const cookieStore = cookies()
-    const supabase = createServerComponentClient({ cookies: () => cookieStore })
-
-    // Verify user authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    // Verify user authentication via Authorization Bearer token
+    const { user, error: authError } = await getAuthenticatedUser(request as unknown as Request)
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
