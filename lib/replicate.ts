@@ -24,17 +24,27 @@ export async function* streamGPT5(
   } = {}
 ): AsyncGenerator<string, void, unknown> {
   try {
+    // Convert messages to the format expected by GPT-5
+    const formattedMessages = messages.map(msg => ({
+      role: msg.role,
+      content: msg.content
+    }))
+
     const input = {
-      messages: messages,
+      messages: formattedMessages,
       verbosity: options.verbosity || 'medium',
       reasoning_effort: options.reasoning_effort || 'minimal',
       max_completion_tokens: options.max_completion_tokens || 4000,
       system_prompt: options.system_prompt || 'You are a helpful AI assistant.'
     }
 
+    console.log('Streaming GPT-5 with input:', JSON.stringify(input, null, 2))
+
     for await (const event of replicate.stream("openai/gpt-5", { input })) {
       if (typeof event === 'string') {
         yield event
+      } else if (event && typeof event === 'object' && 'content' in event) {
+        yield event.content as string
       }
     }
   } catch (error) {

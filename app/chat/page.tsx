@@ -159,7 +159,7 @@ export default function ChatPage() {
 
     // Store the message content before clearing the input
     const messageContent = inputMessage.trim()
-    
+
     const userMessage: Message = {
       id: Date.now().toString(),
       content: messageContent,
@@ -180,7 +180,7 @@ export default function ChatPage() {
     ))
 
     try {
-      // Call API
+      // Call GPT-5 API
       console.log('Sending messages to API:', newMessages)
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -198,28 +198,58 @@ export default function ChatPage() {
         throw new Error('Failed to get response')
       }
 
-      const data = await response.json()
-      console.log('API response:', data)
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantMessage = ''
 
-      if (data.success && data.response) {
-        // Add assistant response
-        const assistantMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          content: data.response,
-          role: 'assistant',
-          created_at: new Date().toISOString()
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split('\n')
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.content) {
+                  assistantMessage += data.content
+                  // Update the assistant message in real-time
+                  const tempMessages = [...newMessages, {
+                    id: 'temp-assistant',
+                    content: assistantMessage,
+                    role: 'assistant' as const,
+                    created_at: new Date().toISOString()
+                  }]
+                  setMessages(tempMessages)
+                }
+                if (data.done) {
+                  break
+                }
+              } catch (e) {
+                // Ignore parsing errors
+              }
+            }
+          }
         }
-        
-        const finalMessages = [...newMessages, assistantMessage]
-        setMessages(finalMessages)
-        setConversations(prev => prev.map(conv => 
-          conv.id === currentConversationId 
-            ? { ...conv, messages: finalMessages, updatedAt: new Date() }
-            : conv
-        ))
-      } else {
-        throw new Error(data.error || 'No response from API')
       }
+
+      // Final update with complete message
+      const finalMessages = [...newMessages, {
+        id: (Date.now() + 1).toString(),
+        content: assistantMessage,
+        role: 'assistant' as const,
+        created_at: new Date().toISOString()
+      }]
+      
+      setMessages(finalMessages)
+      setConversations(prev => prev.map(conv => 
+        conv.id === currentConversationId 
+          ? { ...conv, messages: finalMessages, updatedAt: new Date() }
+          : conv
+      ))
 
     } catch (error) {
       console.error('Error getting AI response:', error)
@@ -331,7 +361,7 @@ export default function ChatPage() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2 text-sm text-apple-gray-600">
                 <span>Welcome to ChatCDC</span>
-              </div>
+            </div>
           </div>
         </div>
       </header>
