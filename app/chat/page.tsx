@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { MessageCircle, Plus, FolderPlus, MoreVertical, Trash2, Edit3 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { MessageCircle, Plus, FolderPlus, MoreVertical, Trash2, Edit3, Upload, FileText, X } from 'lucide-react'
+import { supabase } from '@/lib/supabaseClient'
 
 interface Message {
   id: string
   content: string
   role: 'user' | 'assistant'
   created_at: string
+  file_url?: string
+  file_name?: string
 }
 
 interface Conversation {
@@ -18,6 +21,14 @@ interface Conversation {
   updatedAt: Date
 }
 
+interface UploadedFile {
+  id: string
+  file_name: string
+  file_url: string
+  file_size: number
+  file_type: string
+}
+
 export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
@@ -25,6 +36,10 @@ export default function ChatPage() {
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const messagesEndRef = useRef<HTMLDivElement>(null)
 
   // Initialize with a default conversation
   useEffect(() => {
@@ -39,7 +54,7 @@ export default function ChatPage() {
     setCurrentConversationId('default')
   }, [])
 
-  const createNewConversation = () => {
+  const createNewConversation = async () => {
     const newConversation: Conversation = {
       id: Date.now().toString(),
       title: 'New Chat',
@@ -47,9 +62,26 @@ export default function ChatPage() {
       createdAt: new Date(),
       updatedAt: new Date()
     }
+    
+    // Save to database
+    const { error } = await supabase
+      .from('conversations')
+      .insert({
+        id: newConversation.id,
+        title: newConversation.title,
+        user_id: 'anonymous',
+        created_at: newConversation.createdAt.toISOString(),
+        updated_at: newConversation.updatedAt.toISOString()
+      })
+
+    if (error) {
+      console.error('Error creating conversation:', error)
+    }
+
     setConversations(prev => [newConversation, ...prev])
     setCurrentConversationId(newConversation.id)
     setMessages([])
+    setUploadedFiles([])
   }
 
   const createNewProject = () => {
@@ -87,6 +119,40 @@ export default function ChatPage() {
     }
   }
 
+  const handleFileUpload = async (file: File) => {
+    if (!currentConversationId) return
+
+    setIsUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('conversationId', currentConversationId)
+      formData.append('userId', 'anonymous')
+
+      const response = await fetch('/api/upload-pdf', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setUploadedFiles(prev => [...prev, result.file])
+      } else {
+        alert('Failed to upload file: ' + result.error)
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+      alert('Failed to upload file')
+    } finally {
+      setIsUploading(false)
+    }
+  }
+
+  const removeUploadedFile = (fileId: string) => {
+    setUploadedFiles(prev => prev.filter(file => file.id !== fileId))
+  }
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!inputMessage.trim() || loading || !currentConversationId) return
@@ -110,26 +176,90 @@ export default function ChatPage() {
         : conv
     ))
 
-    // Simulate AI response (replace with actual AI integration)
-    setTimeout(() => {
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `I received your message: "${inputMessage}". This is a placeholder response. In a real implementation, this would connect to your AI service.`,
-        role: 'assistant',
-        created_at: new Date().toISOString()
+    try {
+      // Call GPT-5 API
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: newMessages,
+          conversationId: currentConversationId,
+          userId: 'anonymous'
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to get response')
       }
-      const finalMessages = [...newMessages, aiMessage]
-      setMessages(finalMessages)
+
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
+      let assistantMessage = ''
+
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+
+          const chunk = decoder.decode(value)
+          const lines = chunk.split('\n')
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6))
+                if (data.content) {
+                  assistantMessage += data.content
+                  // Update the assistant message in real-time
+                  const tempMessages = [...newMessages, {
+                    id: 'temp-assistant',
+                    content: assistantMessage,
+                    role: 'assistant' as const,
+                    created_at: new Date().toISOString()
+                  }]
+                  setMessages(tempMessages)
+                }
+                if (data.done) {
+                  break
+                }
+              } catch (e) {
+                // Ignore parsing errors
+              }
+            }
+          }
+        }
+      }
+
+      // Final update with complete message
+      const finalMessages = [...newMessages, {
+        id: (Date.now() + 1).toString(),
+        content: assistantMessage,
+        role: 'assistant' as const,
+        created_at: new Date().toISOString()
+      }]
       
-      // Update conversation with AI response
+      setMessages(finalMessages)
       setConversations(prev => prev.map(conv => 
         conv.id === currentConversationId 
           ? { ...conv, messages: finalMessages, updatedAt: new Date() }
           : conv
       ))
-      
+
+    } catch (error) {
+      console.error('Error getting AI response:', error)
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        content: 'Sorry, I encountered an error. Please try again.',
+        role: 'assistant',
+        created_at: new Date().toISOString()
+      }
+      const finalMessages = [...newMessages, errorMessage]
+      setMessages(finalMessages)
+    } finally {
       setLoading(false)
-    }, 1000)
+    }
   }
 
 
@@ -283,15 +413,72 @@ export default function ChatPage() {
 
         {/* Input Area */}
         <div className="border-t border-apple-gray-200 p-6">
+          {/* Uploaded Files Display */}
+          {uploadedFiles.length > 0 && (
+            <div className="mb-4 p-3 bg-apple-gray-50 rounded-xl">
+              <div className="flex items-center gap-2 mb-2">
+                <FileText className="w-4 h-4 text-apple-gray-600" />
+                <span className="text-sm font-medium text-apple-gray-700">Uploaded Files:</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {uploadedFiles.map((file) => (
+                  <div
+                    key={file.id}
+                    className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg border border-apple-gray-200"
+                  >
+                    <FileText className="w-4 h-4 text-apple-blue-500" />
+                    <span className="text-sm text-apple-gray-700 truncate max-w-32">
+                      {file.file_name}
+                    </span>
+                    <button
+                      onClick={() => removeUploadedFile(file.id)}
+                      className="text-apple-gray-400 hover:text-red-500 transition-colors"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSendMessage} className="flex gap-3">
-            <input
-              type="text"
-              value={inputMessage}
-              onChange={(e) => setInputMessage(e.target.value)}
-              placeholder="Type your message..."
-              className="flex-1 input-field"
-              disabled={loading}
-            />
+            <div className="flex-1 flex gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".pdf"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) {
+                    handleFileUpload(file)
+                    e.target.value = '' // Reset input
+                  }
+                }}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={loading || isUploading}
+                className="p-3 border border-apple-gray-200 rounded-xl hover:bg-apple-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Upload PDF"
+              >
+                {isUploading ? (
+                  <div className="w-5 h-5 border-2 border-apple-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Upload className="w-5 h-5 text-apple-gray-600" />
+                )}
+              </button>
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder="Type your message..."
+                className="flex-1 input-field"
+                disabled={loading}
+              />
+            </div>
             <button
               type="submit"
               disabled={loading || !inputMessage.trim()}
