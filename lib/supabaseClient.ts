@@ -58,14 +58,7 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        // Add more robust error handling
-        onAuthError: (error) => {
-          console.error('Supabase Authentication Error:', {
-            message: error.message,
-            status: error.status,
-            name: error.name
-          });
-        }
+        debug: true // Enable debug mode for more logging
       },
       global: {
         headers: {
@@ -97,6 +90,17 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
         message: error.message,
         stack: error.stack
       });
+    });
+
+    // Add custom error handling for authentication
+    _supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN') {
+        console.log('User signed in successfully');
+      } else if (event === 'SIGN_OUT') {
+        console.log('User signed out');
+      } else if (event === 'AUTH_ERROR') {
+        console.error('Authentication Error:', session);
+      }
     });
 
     return _supabaseClient;
