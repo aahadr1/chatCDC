@@ -49,13 +49,13 @@ export default function AuthPage() {
         
         if (error) throw new Error(error)
         
-        if (data?.user && data?.session) {
+        if (data && typeof data === 'object' && 'user' in data && 'session' in data) {
           // Store tokens securely
-          localStorage.setItem('access_token', data.session.access_token)
-          localStorage.setItem('refresh_token', data.session.refresh_token)
+          localStorage.setItem('access_token', (data as any).session.access_token)
+          localStorage.setItem('refresh_token', (data as any).session.refresh_token)
           
           // Set token for future API calls
-          apiClient.setAccessToken(data.session.access_token)
+          apiClient.setAccessToken((data as any).session.access_token)
           
           setMessage({ type: 'success', text: 'Login successful! Redirecting...' })
           setTimeout(() => {
@@ -75,7 +75,7 @@ export default function AuthPage() {
         
         if (error) throw new Error(error)
         
-        if (data?.user) {
+        if (data && typeof data === 'object' && 'user' in data) {
           setMessage({ 
             type: 'success', 
             text: 'Account created! Please check your email to verify your account.' 
