@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { apiClient } from '@/lib/apiClient'
 import { useRouter } from 'next/navigation'
 import { MessageCircle, Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2 } from 'lucide-react'
 
@@ -22,26 +22,20 @@ export default function AuthPage() {
   useEffect(() => {
     // Check if user is already logged in
     const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        router.push('/chat')
+      const token = localStorage.getItem('access_token')
+      if (token) {
+        apiClient.setAccessToken(token)
+        const { data, error } = await apiClient.getCurrentUser()
+        if (!error && data?.user) {
+          router.push('/chat')
+        } else {
+          // Token is invalid, remove it
+          localStorage.removeItem('access_token')
+          localStorage.removeItem('refresh_token')
+        }
       }
     }
     checkAuth()
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (event === 'SIGNED_IN' && session) {
-          setMessage({ type: 'success', text: 'Login successful! Redirecting...' })
-          setTimeout(() => {
-            router.push('/chat')
-          }, 1000)
-        }
-      }
-    )
-
-    return () => subscription.unsubscribe()
   }, [router])
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -51,17 +45,22 @@ export default function AuthPage() {
 
     try {
       if (mode === 'login') {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        })
+        const { data, error } = await apiClient.signIn(email, password)
         
-        if (error) throw error
+        if (error) throw new Error(error)
         
-        if (data.user) {
+        if (data?.user && data?.session) {
+          // Store tokens securely
+          localStorage.setItem('access_token', data.session.access_token)
+          localStorage.setItem('refresh_token', data.session.refresh_token)
+          
+          // Set token for future API calls
+          apiClient.setAccessToken(data.session.access_token)
+          
           setMessage({ type: 'success', text: 'Login successful! Redirecting...' })
-          // Force immediate redirect
-          window.location.href = '/chat'
+          setTimeout(() => {
+            router.push('/chat')
+          }, 1000)
         }
       } else if (mode === 'signup') {
         if (password !== confirmPassword) {
@@ -72,20 +71,11 @@ export default function AuthPage() {
           throw new Error('Password must be at least 6 characters')
         }
 
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              full_name: fullName,
-              display_name: fullName
-            }
-          }
-        })
+        const { data, error } = await apiClient.signUp(email, password, fullName)
         
-        if (error) throw error
+        if (error) throw new Error(error)
         
-        if (data.user) {
+        if (data?.user) {
           setMessage({ 
             type: 'success', 
             text: 'Account created! Please check your email to verify your account.' 
@@ -93,15 +83,13 @@ export default function AuthPage() {
           setMode('login')
         }
       } else if (mode === 'forgot') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/auth/reset-password`
-        })
+        const { error } = await apiClient.resetPassword(email)
         
-        if (error) throw error
+        if (error) throw new Error(error)
         
         setMessage({ 
           type: 'success', 
-          text: 'Password reset link sent to your email!' 
+          text: 'If an account with that email exists, a password reset link has been sent.' 
         })
       }
     } catch (error: any) {

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { MessageCircle, Plus, Send, Loader2, Menu, X, LogOut, User, FolderPlus, Folder } from 'lucide-react'
-import { supabase, signOut, getCurrentUser } from '@/lib/supabaseClient'
+import { apiClient } from '@/lib/apiClient'
 import { useRouter } from 'next/navigation'
 
 interface Message {
@@ -46,35 +46,38 @@ export default function ChatPage() {
   // Initialize user and load conversations
   useEffect(() => {
     const initializeUser = async () => {
-      const { user } = await getCurrentUser()
-      if (user) {
-        setUser({
-          id: user.id,
-          email: user.email!,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.display_name
-        })
-        await loadConversations(user.id)
-      } else {
+      const token = localStorage.getItem('access_token')
+      if (!token) {
         router.push('/auth')
+        return
       }
+
+      apiClient.setAccessToken(token)
+      const { data, error } = await apiClient.getCurrentUser()
+      
+      if (error || !data?.user) {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        router.push('/auth')
+        return
+      }
+
+      setUser(data.user)
+      await loadConversations()
     }
     
     initializeUser()
   }, [router])
 
   // Load conversations from database
-  const loadConversations = async (userId: string) => {
+  const loadConversations = async () => {
     try {
-      const { data: conversationsData, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false })
+      const { data, error } = await apiClient.getConversations()
 
-      if (error) throw error
+      if (error) throw new Error(error)
 
-      if (conversationsData && conversationsData.length > 0) {
-        const conversations = conversationsData.map(conv => ({
+      if (data?.conversations && data.conversations.length > 0) {
+        const conversations = data.conversations.map(conv => ({
           id: conv.id,
           title: conv.title,
           messages: [],
@@ -96,16 +99,12 @@ export default function ChatPage() {
   // Load messages for a conversation
   const loadMessages = async (conversationId: string) => {
     try {
-      const { data: messagesData, error } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', conversationId)
-        .order('created_at', { ascending: true })
+      const { data, error } = await apiClient.getMessages(conversationId)
 
-      if (error) throw error
+      if (error) throw new Error(error)
 
-      if (messagesData) {
-        const messages = messagesData.map(msg => ({
+      if (data?.messages) {
+        const messages = data.messages.map(msg => ({
           id: msg.id,
           content: msg.content,
           role: msg.role as 'user' | 'assistant',
@@ -122,28 +121,23 @@ export default function ChatPage() {
     if (!user) return
 
     try {
-      const { data, error } = await supabase
-        .from('conversations')
-        .insert({
-          title: 'New Chat',
-          user_id: user.id
-        })
-        .select()
-        .single()
+      const { data, error } = await apiClient.createConversation('New Chat')
 
-      if (error) throw error
+      if (error) throw new Error(error)
 
-      const newConversation: Conversation = {
-        id: data.id,
-        title: data.title,
-        messages: [],
-        createdAt: new Date(data.created_at),
-        updatedAt: new Date(data.updated_at)
+      if (data?.conversation) {
+        const newConversation: Conversation = {
+          id: data.conversation.id,
+          title: data.conversation.title,
+          messages: [],
+          createdAt: new Date(data.conversation.created_at),
+          updatedAt: new Date(data.conversation.updated_at)
+        }
+
+        setConversations(prev => [newConversation, ...prev])
+        setCurrentConversationId(newConversation.id)
+        setMessages([])
       }
-
-      setConversations(prev => [newConversation, ...prev])
-      setCurrentConversationId(newConversation.id)
-      setMessages([])
     } catch (error) {
       console.error('Error creating conversation:', error)
     }
@@ -156,12 +150,9 @@ export default function ChatPage() {
 
   const deleteConversation = async (conversationId: string) => {
     try {
-      const { error } = await supabase
-        .from('conversations')
-        .delete()
-        .eq('id', conversationId)
+      const { error } = await apiClient.deleteConversation(conversationId)
 
-      if (error) throw error
+      if (error) throw new Error(error)
 
       setConversations(prev => prev.filter(c => c.id !== conversationId))
       
@@ -180,8 +171,18 @@ export default function ChatPage() {
   }
 
   const handleSignOut = async () => {
-    const { error } = await signOut()
-    if (!error) {
+    try {
+      await apiClient.signOut()
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      apiClient.setAccessToken(null)
+      router.push('/auth')
+    } catch (error) {
+      console.error('Sign out error:', error)
+      // Still redirect even if sign out fails
+      localStorage.removeItem('access_token')
+      localStorage.removeItem('refresh_token')
+      apiClient.setAccessToken(null)
       router.push('/auth')
     }
   }
@@ -228,33 +229,25 @@ export default function ChatPage() {
 
     try {
       // Save user message to database
-      const { data: userMessageData, error: userMessageError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: currentConversationId,
-          user_id: user.id,
-          role: 'user',
-          content: messageContent
-        })
-        .select()
-        .single()
+      const { data: userMessageData, error: userMessageError } = await apiClient.createMessage(
+        currentConversationId,
+        messageContent,
+        'user'
+      )
 
-      if (userMessageError) throw userMessageError
+      if (userMessageError) throw new Error(userMessageError)
 
       const userMessage: Message = {
-        id: userMessageData.id,
-        content: userMessageData.content,
+        id: userMessageData.message.id,
+        content: userMessageData.message.content,
         role: 'user',
-        timestamp: new Date(userMessageData.created_at)
+        timestamp: new Date(userMessageData.message.created_at)
       }
 
       // Update conversation title if it's the first message
       if (messages.length === 0) {
         const title = generateTitle(messageContent)
-        await supabase
-          .from('conversations')
-          .update({ title })
-          .eq('id', currentConversationId)
+        await apiClient.updateConversation(currentConversationId, { title })
 
         setConversations(prev => prev.map(conv => 
           conv.id === currentConversationId 
@@ -267,21 +260,14 @@ export default function ChatPage() {
       setMessages(newMessages)
 
       // Get AI response
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
-        },
-        body: JSON.stringify({
-          messages: newMessages.map(msg => ({
-            role: msg.role,
-            content: msg.content
-          })),
-          conversationId: currentConversationId,
-          userId: user.id
-        }),
-      })
+      const response = await apiClient.sendChatMessage(
+        newMessages.map(msg => ({
+          role: msg.role,
+          content: msg.content
+        })),
+        currentConversationId,
+        user.id
+      )
 
       if (!response.ok) {
         throw new Error('Failed to get response')
@@ -336,34 +322,23 @@ export default function ChatPage() {
       }
 
       // Save assistant message to database
-      const { data: assistantMessageData, error: assistantMessageError } = await supabase
-        .from('messages')
-        .insert({
-          conversation_id: currentConversationId,
-          user_id: user.id,
-          role: 'assistant',
-          content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.'
-        })
-        .select()
-        .single()
+      const { data: assistantMessageData, error: assistantMessageError } = await apiClient.createMessage(
+        currentConversationId,
+        assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.',
+        'assistant'
+      )
 
-      if (assistantMessageError) throw assistantMessageError
+      if (assistantMessageError) throw new Error(assistantMessageError)
 
       const finalAssistantMessage: Message = {
-        id: assistantMessageData.id,
-        content: assistantMessageData.content,
+        id: assistantMessageData.message.id,
+        content: assistantMessageData.message.content,
         role: 'assistant',
-        timestamp: new Date(assistantMessageData.created_at)
+        timestamp: new Date(assistantMessageData.message.created_at)
       }
 
       const finalMessages = [...newMessages, finalAssistantMessage]
       setMessages(finalMessages)
-
-      // Update conversation updated_at
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', currentConversationId)
 
     } catch (error) {
       console.error('Error in chat:', error)
