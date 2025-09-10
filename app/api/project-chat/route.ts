@@ -1,0 +1,125 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import Replicate from 'replicate'
+
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN!,
+})
+
+export async function POST(request: NextRequest) {
+  try {
+    const cookieStore = cookies()
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    )
+
+    // Get the authenticated user
+    const { data: { user }, error: authError } = await supabase.auth.getUser()
+    if (authError || !user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const body = await request.json()
+    const { messages, projectId, conversationId, userId, knowledgeBase } = body
+
+    if (!messages || !projectId || !conversationId || !userId) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Verify user owns the project
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('name, description')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single()
+
+    if (projectError || !project) {
+      return NextResponse.json({ error: 'Project not found or access denied' }, { status: 404 })
+    }
+
+    // Create enhanced system prompt with knowledge base
+    const systemPrompt = `You are an AI assistant with access to a specific project's documents. You have been given a knowledge base containing the full text of all documents in the project "${project.name}".
+
+${project.description ? `Project Description: ${project.description}` : ''}
+
+KNOWLEDGE BASE:
+${knowledgeBase || 'No documents have been processed yet.'}
+
+END OF KNOWLEDGE BASE
+
+Instructions:
+1. Answer questions based ONLY on the information provided in the knowledge base above
+2. If a question cannot be answered from the knowledge base, clearly state that the information is not available in the provided documents
+3. When citing information, try to indicate which document it comes from if possible
+4. Be helpful, accurate, and comprehensive in your responses
+5. If asked about the project or documents, provide relevant details from the knowledge base
+6. Feel free to make connections between different pieces of information from various documents
+7. If the user asks for summaries or analysis, provide detailed responses based on the available content
+
+Remember: Your knowledge is limited to the documents in this project's knowledge base. Do not use external knowledge unless specifically requested and clearly distinguished from the document-based information.`
+
+    // Prepare messages for the API
+    const apiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...messages
+    ]
+
+    // Create a ReadableStream for server-sent events
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          const input = {
+            prompt: apiMessages.map(msg => `${msg.role}: ${msg.content}`).join('\n\n') + '\n\nassistant:',
+            system_prompt: systemPrompt,
+            max_tokens: 8192,
+            max_image_resolution: 0.5
+          }
+
+          // Stream response from Replicate
+          for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
+            const chunk = `data: ${JSON.stringify({ content: event })}\n\n`
+            controller.enqueue(new TextEncoder().encode(chunk))
+          }
+
+          // Send completion signal
+          controller.enqueue(new TextEncoder().encode('data: {"done": true}\n\n'))
+          controller.close()
+
+        } catch (error) {
+          console.error('Error in project chat stream:', error)
+          const errorChunk = `data: ${JSON.stringify({ 
+            error: 'An error occurred while processing your request',
+            content: 'I apologize, but I encountered an error while processing your request. Please try again.'
+          })}\n\n`
+          controller.enqueue(new TextEncoder().encode(errorChunk))
+          controller.close()
+        }
+      }
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
+
+  } catch (error) {
+    console.error('Project chat API error:', error)
+    return NextResponse.json({
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
+  }
+}

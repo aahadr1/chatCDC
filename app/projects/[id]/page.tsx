@@ -1,9 +1,23 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Plus, Send, Loader2, Menu, X, LogOut, User, FolderPlus, Folder } from 'lucide-react'
-import { supabase, signOut, getCurrentUser } from '@/lib/supabaseClient'
-import { useRouter } from 'next/navigation'
+import { useRouter, useParams } from 'next/navigation'
+import { 
+  MessageCircle, 
+  Send, 
+  Loader2, 
+  Menu, 
+  X, 
+  ArrowLeft, 
+  FileText,
+  Download,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Trash2
+} from 'lucide-react'
+import { supabase, getCurrentUser } from '@/lib/supabaseClient'
 
 interface Message {
   id: string
@@ -12,78 +26,136 @@ interface Message {
   timestamp: Date
 }
 
+interface Document {
+  id: string
+  original_filename: string
+  file_type: string
+  file_size: number
+  file_url: string
+  extracted_text: string
+  text_length: number
+  processing_status: string
+  created_at: string
+}
+
+interface Project {
+  id: string
+  name: string
+  description?: string
+  status: string
+  document_count: number
+  total_characters: number
+  knowledge_base: string
+  created_at: string
+  updated_at: string
+}
+
 interface Conversation {
   id: string
   title: string
-  messages: Message[]
-  createdAt: Date
-  updatedAt: Date
+  created_at: string
+  updated_at: string
 }
 
 interface User {
   id: string
   email: string
-  full_name?: string
 }
 
-export default function ChatPage() {
+export default function ProjectChatPage() {
+  const router = useRouter()
+  const params = useParams()
+  const projectId = params.id as string
+
   const [user, setUser] = useState<User | null>(null)
+  const [project, setProject] = useState<Project | null>(null)
+  const [documents, setDocuments] = useState<Document[]>([])
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState('')
   const [loading, setLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [documentsOpen, setDocumentsOpen] = useState(true)
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+  const [documentPreview, setDocumentPreview] = useState(false)
+
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const router = useRouter()
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Initialize user and load conversations
+  // Initialize user and load project data
   useEffect(() => {
-    const initializeUser = async () => {
+    const initializeProject = async () => {
       const { user } = await getCurrentUser()
       if (user) {
         setUser({
           id: user.id,
-          email: user.email!,
-          full_name: user.user_metadata?.full_name || user.user_metadata?.display_name
+          email: user.email!
         })
+        await loadProject(user.id)
+        await loadDocuments(user.id)
         await loadConversations(user.id)
       } else {
         router.push('/auth')
       }
     }
     
-    initializeUser()
-  }, [router])
+    initializeProject()
+  }, [router, projectId])
 
-  // Load conversations from database
+  const loadProject = async (userId: string) => {
+    try {
+      const { data: projectData, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('id', projectId)
+        .eq('user_id', userId)
+        .single()
+
+      if (error) throw error
+      setProject(projectData)
+    } catch (error) {
+      console.error('Error loading project:', error)
+      router.push('/projects')
+    }
+  }
+
+  const loadDocuments = async (userId: string) => {
+    try {
+      const { data: documentsData, error } = await supabase
+        .from('project_documents')
+        .select('*')
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      setDocuments(documentsData || [])
+    } catch (error) {
+      console.error('Error loading documents:', error)
+    }
+  }
+
   const loadConversations = async (userId: string) => {
     try {
       const { data: conversationsData, error } = await supabase
-        .from('conversations')
+        .from('project_conversations')
         .select('*')
+        .eq('project_id', projectId)
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
 
       if (error) throw error
 
       if (conversationsData && conversationsData.length > 0) {
-        const conversations = conversationsData.map(conv => ({
-          id: conv.id,
-          title: conv.title,
-          messages: [],
-          createdAt: new Date(conv.created_at),
-          updatedAt: new Date(conv.updated_at)
-        }))
-        setConversations(conversations)
-        setCurrentConversationId(conversations[0].id)
-        await loadMessages(conversations[0].id)
+        setConversations(conversationsData)
+        setCurrentConversationId(conversationsData[0].id)
+        await loadMessages(conversationsData[0].id)
       } else {
         // Create default conversation if none exist
         await createNewConversation()
@@ -93,11 +165,10 @@ export default function ChatPage() {
     }
   }
 
-  // Load messages for a conversation
   const loadMessages = async (conversationId: string) => {
     try {
       const { data: messagesData, error } = await supabase
-        .from('messages')
+        .from('project_messages')
         .select('*')
         .eq('conversation_id', conversationId)
         .order('created_at', { ascending: true })
@@ -119,13 +190,14 @@ export default function ChatPage() {
   }
 
   const createNewConversation = async () => {
-    if (!user) return
+    if (!user || !project) return
 
     try {
       const { data, error } = await supabase
-        .from('conversations')
+        .from('project_conversations')
         .insert({
           title: 'New Chat',
+          project_id: projectId,
           user_id: user.id
         })
         .select()
@@ -133,12 +205,11 @@ export default function ChatPage() {
 
       if (error) throw error
 
-      const newConversation: Conversation = {
+      const newConversation = {
         id: data.id,
         title: data.title,
-        messages: [],
-        createdAt: new Date(data.created_at),
-        updatedAt: new Date(data.updated_at)
+        created_at: data.created_at,
+        updated_at: data.updated_at
       }
 
       setConversations(prev => [newConversation, ...prev])
@@ -155,9 +226,11 @@ export default function ChatPage() {
   }
 
   const deleteConversation = async (conversationId: string) => {
+    if (conversations.length <= 1) return
+
     try {
       const { error } = await supabase
-        .from('conversations')
+        .from('project_conversations')
         .delete()
         .eq('id', conversationId)
 
@@ -170,8 +243,6 @@ export default function ChatPage() {
         if (remaining.length > 0) {
           setCurrentConversationId(remaining[0].id)
           await loadMessages(remaining[0].id)
-        } else {
-          await createNewConversation()
         }
       }
     } catch (error) {
@@ -179,20 +250,11 @@ export default function ChatPage() {
     }
   }
 
-  const handleSignOut = async () => {
-    const { error } = await signOut()
-    if (!error) {
-      router.push('/auth')
-    }
-  }
-
   const generateTitle = (message: string): string => {
-    // Generate a smart title from the first message
     const words = message.trim().split(' ').slice(0, 4)
     return words.join(' ') + (message.trim().split(' ').length > 4 ? '...' : '')
   }
 
-  // Auto-resize textarea
   const adjustTextareaHeight = () => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
@@ -200,13 +262,11 @@ export default function ChatPage() {
     }
   }
 
-  // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInputMessage(e.target.value)
     adjustTextareaHeight()
   }
 
-  // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -215,13 +275,12 @@ export default function ChatPage() {
   }
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || loading || !currentConversationId || !user) return
+    if (!inputMessage.trim() || loading || !currentConversationId || !user || !project) return
 
     const messageContent = inputMessage.trim()
     setInputMessage('')
     setLoading(true)
 
-    // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto'
     }
@@ -229,9 +288,10 @@ export default function ChatPage() {
     try {
       // Save user message to database
       const { data: userMessageData, error: userMessageError } = await supabase
-        .from('messages')
+        .from('project_messages')
         .insert({
           conversation_id: currentConversationId,
+          project_id: projectId,
           user_id: user.id,
           role: 'user',
           content: messageContent
@@ -252,13 +312,13 @@ export default function ChatPage() {
       if (messages.length === 0) {
         const title = generateTitle(messageContent)
         await supabase
-          .from('conversations')
+          .from('project_conversations')
           .update({ title })
           .eq('id', currentConversationId)
 
         setConversations(prev => prev.map(conv => 
           conv.id === currentConversationId 
-            ? { ...conv, title, updatedAt: new Date() }
+            ? { ...conv, title, updated_at: new Date().toISOString() }
             : conv
         ))
       }
@@ -266,8 +326,8 @@ export default function ChatPage() {
       const newMessages = [...messages, userMessage]
       setMessages(newMessages)
 
-      // Get AI response
-      const response = await fetch('/api/chat', {
+      // Get AI response using project knowledge base
+      const response = await fetch('/api/project-chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -278,8 +338,10 @@ export default function ChatPage() {
             role: msg.role,
             content: msg.content
           })),
+          projectId: projectId,
           conversationId: currentConversationId,
-          userId: user.id
+          userId: user.id,
+          knowledgeBase: project.knowledge_base
         }),
       })
 
@@ -301,7 +363,6 @@ export default function ChatPage() {
           buffer += decoder.decode(value, { stream: true })
           const lines = buffer.split('\n')
           
-          // Keep the last potentially incomplete line in buffer
           buffer = lines.pop() || ''
 
           for (const line of lines) {
@@ -313,7 +374,6 @@ export default function ChatPage() {
                   const data = JSON.parse(dataStr)
                   if (data.content && typeof data.content === 'string') {
                     assistantMessage += data.content
-                    // Update the assistant message in real-time
                     const tempMessages = [...newMessages, {
                       id: 'temp-assistant',
                       content: assistantMessage,
@@ -322,11 +382,7 @@ export default function ChatPage() {
                     }]
                     setMessages(tempMessages)
                   }
-                  if (data.done) {
-                    break
-                  }
                 } catch (e) {
-                  // Ignore malformed JSON
                   console.warn('Failed to parse SSE data:', dataStr)
                 }
               }
@@ -337,9 +393,10 @@ export default function ChatPage() {
 
       // Save assistant message to database
       const { data: assistantMessageData, error: assistantMessageError } = await supabase
-        .from('messages')
+        .from('project_messages')
         .insert({
           conversation_id: currentConversationId,
+          project_id: projectId,
           user_id: user.id,
           role: 'assistant',
           content: assistantMessage || 'I apologize, but I couldn\'t generate a response. Please try again.'
@@ -361,15 +418,15 @@ export default function ChatPage() {
 
       // Update conversation updated_at
       await supabase
-        .from('conversations')
+        .from('project_conversations')
         .update({ updated_at: new Date().toISOString() })
         .eq('id', currentConversationId)
 
     } catch (error) {
-      console.error('Error in chat:', error)
+      console.error('Error in project chat:', error)
       const errorMessage: Message = {
         id: 'error-' + Date.now(),
-        content: 'Sorry, I encountered an error. Please check your API configuration and try again.',
+        content: 'Sorry, I encountered an error. Please try again.',
         role: 'assistant',
         timestamp: new Date()
       }
@@ -379,42 +436,56 @@ export default function ChatPage() {
     }
   }
 
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes'
+    const k = 1024
+    const sizes = ['Bytes', 'KB', 'MB', 'GB']
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
+  }
+
+  const getFileIcon = (fileType: string) => {
+    return <FileText className="w-4 h-4 text-blue-500" />
+  }
+
+  if (!user || !project) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading project...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="h-screen bg-gray-50 flex">
-      {/* Sidebar */}
+      {/* Left Sidebar - Conversations */}
       <div className={`${sidebarOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-gray-900 text-white flex flex-col overflow-hidden`}>
         {/* Sidebar Header */}
         <div className="p-4 border-b border-gray-800">
           <div className="flex items-center gap-3 mb-4">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-white" />
+            <button
+              onClick={() => router.push('/projects')}
+              className="p-1 hover:bg-gray-800 rounded transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-lg font-bold truncate">{project.name}</h1>
+              <p className="text-xs text-gray-400 truncate">
+                {project.document_count} documents
+              </p>
             </div>
-            <h1 className="text-lg font-bold">ChatCDC</h1>
           </div>
           
           <button
             onClick={createNewConversation}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors mb-2"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors"
           >
             <Plus className="w-4 h-4" />
             New Chat
-          </button>
-          
-          <button
-            onClick={() => router.push('/projects/new')}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors mb-2"
-          >
-            <FolderPlus className="w-4 h-4" />
-            New Project
-          </button>
-          
-          <button
-            onClick={() => router.push('/projects')}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors"
-          >
-            <Folder className="w-4 h-4" />
-            My Projects
           </button>
         </div>
 
@@ -442,36 +513,12 @@ export default function ChatPage() {
                   }}
                   className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-700 rounded transition-all"
                 >
-                  <X className="w-3 h-3" />
+                  <Trash2 className="w-3 h-3" />
                 </button>
               )}
             </div>
           ))}
         </div>
-
-        {/* User Profile */}
-        {user && (
-          <div className="p-4 border-t border-gray-800">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
-                  {user.full_name || user.email}
-                </p>
-                <p className="text-xs text-gray-400 truncate">{user.email}</p>
-              </div>
-              <button
-                onClick={handleSignOut}
-                className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-                title="Sign out"
-              >
-                <LogOut className="w-4 h-4 text-gray-400" />
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Main Chat Area */}
@@ -487,11 +534,18 @@ export default function ChatPage() {
             </button>
             <div>
               <h1 className="text-xl font-semibold text-gray-900">
-                {conversations.find(c => c.id === currentConversationId)?.title || 'ChatCDC'}
+                {conversations.find(c => c.id === currentConversationId)?.title || project.name}
               </h1>
-              <p className="text-sm text-gray-500">Powered by GPT-5</p>
+              <p className="text-sm text-gray-500">Project Knowledge Base</p>
             </div>
           </div>
+          
+          <button
+            onClick={() => setDocumentsOpen(!documentsOpen)}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            {documentsOpen ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
+          </button>
         </header>
 
         {/* Messages */}
@@ -503,11 +557,11 @@ export default function ChatPage() {
                   <MessageCircle className="w-8 h-8 text-blue-600" />
                 </div>
                 <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-                  Welcome to ChatCDC
+                  Chat with Your Project
                 </h2>
                 <p className="text-gray-600 leading-relaxed">
-                  I'm your AI assistant powered by GPT-5. Ask me anything - from coding help to creative writing, 
-                  analysis, math problems, or just casual conversation. How can I help you today?
+                  Ask questions about your documents. I have access to all {project.document_count} documents 
+                  in this project and can help you find information, summarize content, or answer specific questions.
                 </p>
               </div>
             </div>
@@ -550,7 +604,7 @@ export default function ChatPage() {
                       <div className="inline-block bg-white border border-gray-200 px-4 py-3 rounded-2xl">
                         <div className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-                          <span className="text-gray-500">Thinking...</span>
+                          <span className="text-gray-500">Analyzing your documents...</span>
                         </div>
                       </div>
                     </div>
@@ -574,7 +628,7 @@ export default function ChatPage() {
                     value={inputMessage}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
-                    placeholder="Message ChatCDC..."
+                    placeholder={`Ask questions about your ${project.document_count} documents...`}
                     className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-32"
                     style={{ minHeight: '50px' }}
                     disabled={loading}
@@ -590,11 +644,98 @@ export default function ChatPage() {
               </div>
             </div>
             <div className="mt-2 text-xs text-gray-500 text-center">
-              ChatCDC can make mistakes. Please verify important information.
+              Ask questions about your documents. AI responses are based on your uploaded content.
             </div>
           </div>
         </div>
       </div>
+
+      {/* Right Sidebar - Documents */}
+      <div className={`${documentsOpen ? 'w-80' : 'w-0'} transition-all duration-300 bg-white border-l border-gray-200 flex flex-col overflow-hidden`}>
+        <div className="p-4 border-b border-gray-200">
+          <h3 className="font-semibold text-gray-900">Documents</h3>
+          <p className="text-sm text-gray-500">{documents.length} files uploaded</p>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {documents.map((document) => (
+            <div
+              key={document.id}
+              className="p-3 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+              onClick={() => setSelectedDocument(document)}
+            >
+              <div className="flex items-start gap-3">
+                {getFileIcon(document.file_type)}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {document.original_filename}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {formatFileSize(document.file_size)}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {document.text_length.toLocaleString()} characters extracted
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setSelectedDocument(document)
+                      setDocumentPreview(true)
+                    }}
+                    className="p-1 hover:bg-gray-200 rounded"
+                    title="Preview"
+                  >
+                    <Eye className="w-4 h-4 text-gray-400" />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      window.open(document.file_url, '_blank')
+                    }}
+                    className="p-1 hover:bg-gray-200 rounded"
+                    title="Download"
+                  >
+                    <Download className="w-4 h-4 text-gray-400" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+          
+          {documents.length === 0 && (
+            <div className="text-center py-8">
+              <FileText className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-500">No documents uploaded</p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Document Preview Modal */}
+      {documentPreview && selectedDocument && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] w-full flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900 truncate">
+                {selectedDocument.original_filename}
+              </h3>
+              <button
+                onClick={() => setDocumentPreview(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 p-4 overflow-y-auto">
+              <div className="whitespace-pre-wrap text-sm text-gray-700 leading-relaxed">
+                {selectedDocument.extracted_text || 'No text content available'}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
