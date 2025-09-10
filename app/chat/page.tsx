@@ -55,14 +55,14 @@ export default function ChatPage() {
       apiClient.setAccessToken(token)
       const { data, error } = await apiClient.getCurrentUser()
       
-      if (error || !data?.user) {
+      if (error || !data || typeof data !== 'object' || !('user' in data)) {
         localStorage.removeItem('access_token')
         localStorage.removeItem('refresh_token')
         router.push('/auth')
         return
       }
 
-      setUser(data.user)
+      setUser((data as any).user)
       await loadConversations()
     }
     
@@ -76,8 +76,8 @@ export default function ChatPage() {
 
       if (error) throw new Error(error)
 
-      if (data?.conversations && data.conversations.length > 0) {
-        const conversations = data.conversations.map(conv => ({
+      if (data if (data?.conversations && data.conversations.length > 0) {if (data?.conversations && data.conversations.length > 0) { typeof data === "object" if (data?.conversations && data.conversations.length > 0) {if (data?.conversations && data.conversations.length > 0) { "conversations" in data if (data?.conversations && data.conversations.length > 0) {if (data?.conversations && data.conversations.length > 0) { (data as any).conversations.length > 0) {
+        const conversations = (data as any).conversations.map(conv => ({
           id: conv.id,
           title: conv.title,
           messages: [],
@@ -103,8 +103,8 @@ export default function ChatPage() {
 
       if (error) throw new Error(error)
 
-      if (data?.messages) {
-        const messages = data.messages.map(msg => ({
+      if (data if (data?.messages) {if (data?.messages) { typeof data === "object" if (data?.messages) {if (data?.messages) { "messages" in data) {
+        const messages = (data as any).messages.map(msg => ({
           id: msg.id,
           content: msg.content,
           role: msg.role as 'user' | 'assistant',
@@ -125,7 +125,7 @@ export default function ChatPage() {
 
       if (error) throw new Error(error)
 
-      if (data?.conversation) {
+      if (data if (data?.conversation) {if (data?.conversation) { typeof data === "object" if (data?.conversation) {if (data?.conversation) { "conversation" in data) {
         const newConversation: Conversation = {
           id: data.conversation.id,
           title: data.conversation.title,
