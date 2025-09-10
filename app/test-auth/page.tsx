@@ -51,6 +51,13 @@ export default function TestAuthPage() {
         const isAuthenticated = !!user && !!session;
         setShowGoChatButton(isAuthenticated);
 
+        // Automatic redirect for authenticated users
+        if (isAuthenticated) {
+          console.log('User authenticated, redirecting to chat');
+          window.location.href = '/chat';
+          return;
+        }
+
         // Test auth callback route
         let testCallbackResponse;
         try {
@@ -83,13 +90,6 @@ export default function TestAuthPage() {
             home: `${window.location.origin}/`
           }
         });
-
-        // Automatic redirect for authenticated users
-        if (isAuthenticated) {
-          console.log('User authenticated, preparing redirect');
-          // Uncomment the next line if you want automatic redirect
-          // window.location.href = '/chat';
-        }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error('Authentication Check Error:', error);
@@ -113,10 +113,8 @@ export default function TestAuthPage() {
         
         // Redirect logic for authenticated users
         if (event === 'SIGNED_IN' && session?.user) {
-          console.log('User signed in, preparing redirect');
-          setShowGoChatButton(true);
-          // Uncomment the next line if you want automatic redirect
-          // window.location.href = '/chat';
+          console.log('User signed in, redirecting to chat');
+          window.location.href = '/chat';
         }
         
         checkAuth();
