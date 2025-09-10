@@ -7,6 +7,29 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 let _supabaseClient: SupabaseClient | null = null;
 
 /**
+ * Validate Supabase configuration
+ * @returns {boolean} Whether the configuration is valid
+ */
+function validateSupabaseConfig(): boolean {
+  const errors: string[] = [];
+
+  if (!supabaseUrl) {
+    errors.push('Missing NEXT_PUBLIC_SUPABASE_URL environment variable');
+  }
+
+  if (!supabaseAnonKey) {
+    errors.push('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable');
+  }
+
+  if (errors.length > 0) {
+    console.error('Supabase Configuration Errors:', errors);
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Create a secure Supabase client in the browser with comprehensive error handling
  * 
  * @returns {SupabaseClient | null} Supabase client or null if configuration is invalid
@@ -18,29 +41,41 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
     return _supabaseClient;
   }
 
+  // Validate configuration first
+  if (!validateSupabaseConfig()) {
+    return null;
+  }
+
   try {
-    // Validate environment configuration
-    if (!supabaseUrl) {
-      console.error('Missing NEXT_PUBLIC_SUPABASE_URL environment variable');
-      return null;
-    }
+    // Ensure non-null assertion after validation
+    const url = supabaseUrl!;
+    const anonKey = supabaseAnonKey!;
 
-    if (!supabaseAnonKey) {
-      console.error('Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable');
-      return null;
-    }
-
-    // Create and configure Supabase client
-    _supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    // Create and configure Supabase client with enhanced error handling
+    _supabaseClient = createClient(url, anonKey, {
       // Enhanced configuration options
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        // Add more robust error handling
+        onAuthError: (error) => {
+          console.error('Supabase Authentication Error:', {
+            message: error.message,
+            status: error.status,
+            name: error.name
+          });
+        }
       },
       global: {
         headers: {
           'x-client-info': 'nextjs-app/1.0.0'
+        }
+      },
+      // Add detailed logging for network requests
+      realtime: {
+        params: {
+          eventsPerSecond: 10
         }
       }
     });
@@ -48,13 +83,30 @@ export function createBrowserSupabaseClient(): SupabaseClient | null {
     // Log client creation for debugging
     console.log('Browser Supabase Client Created', {
       timestamp: new Date().toISOString(),
-      url: supabaseUrl.replace(/\/+$/, '') // Remove trailing slashes
+      url: url.replace(/\/+$/, ''), // Remove trailing slashes
+      config: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    });
+
+    // Add error event listener
+    _supabaseClient.on('error', (error) => {
+      console.error('Supabase Client Global Error:', {
+        message: error.message,
+        stack: error.stack
+      });
     });
 
     return _supabaseClient;
   } catch (error) {
     console.error('Failed to create Supabase browser client', {
-      error: error instanceof Error ? error.message : String(error)
+      error: error instanceof Error ? {
+        message: error.message,
+        name: error.name,
+        stack: error.stack
+      } : String(error)
     });
     return null;
   }

@@ -7,6 +7,7 @@ export default function TestAuthPage() {
   const [status, setStatus] = useState<any>({});
   const [loading, setLoading] = useState(true);
   const [showGoChatButton, setShowGoChatButton] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -16,7 +17,10 @@ export default function TestAuthPage() {
       const supabase = createBrowserSupabaseClient();
       
       if (!supabase) {
-        setStatus({ error: 'Supabase client not initialized' });
+        const errorMsg = 'Supabase client not initialized';
+        console.error(errorMsg);
+        setStatus({ error: errorMsg });
+        setAuthError(errorMsg);
         setLoading(false);
         return;
       }
@@ -36,14 +40,27 @@ export default function TestAuthPage() {
           sessionError
         });
 
+        // Handle authentication errors
+        if (userError || sessionError) {
+          const errorMsg = userError?.message || sessionError?.message || 'Unknown authentication error';
+          console.error('Authentication Error:', errorMsg);
+          setAuthError(errorMsg);
+        }
+
         // Determine if user is authenticated
         const isAuthenticated = !!user && !!session;
         setShowGoChatButton(isAuthenticated);
 
         // Test auth callback route
-        const testCallbackResponse = await fetch(`${window.location.origin}/auth/callback/test`, {
-          method: 'GET'
-        }).catch(() => ({ status: 'unreachable' }));
+        let testCallbackResponse;
+        try {
+          testCallbackResponse = await fetch(`${window.location.origin}/auth/callback/test`, {
+            method: 'GET'
+          });
+        } catch (fetchError) {
+          console.error('Callback route fetch error:', fetchError);
+          testCallbackResponse = { status: 'unreachable' };
+        }
 
         setStatus({
           user: user || null,
@@ -74,11 +91,13 @@ export default function TestAuthPage() {
           // window.location.href = '/chat';
         }
       } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : 'Unknown error';
         console.error('Authentication Check Error:', error);
         setStatus({ 
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: errorMsg,
           errorDetails: error
         });
+        setAuthError(errorMsg);
       } finally {
         setLoading(false);
       }
@@ -115,7 +134,14 @@ export default function TestAuthPage() {
     <div className="p-8 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-6">Authentication Debug Page</h1>
       
-      <div className="bg-gray-100 p-4 rounded-lg">
+      {authError && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+          <strong className="font-bold">Authentication Error: </strong>
+          <span className="block sm:inline">{authError}</span>
+        </div>
+      )}
+
+      <div className="bg-gray-100 p-4 rounded-lg mb-4">
         <pre className="whitespace-pre-wrap text-sm">
           {JSON.stringify(status, null, 2)}
         </pre>
@@ -136,8 +162,13 @@ export default function TestAuthPage() {
             onClick={async () => {
               const supabase = createBrowserSupabaseClient();
               if (supabase) {
-                await supabase.auth.signOut();
-                window.location.reload();
+                try {
+                  await supabase.auth.signOut();
+                  window.location.reload();
+                } catch (error) {
+                  console.error('Sign out error:', error);
+                  alert(`Failed to sign out: ${error instanceof Error ? error.message : String(error)}`);
+                }
               }
             }}
             className="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
