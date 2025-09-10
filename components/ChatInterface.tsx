@@ -235,7 +235,7 @@ export default function ChatInterface({ initialConversations, initialConversatio
         conversationId = data.conversation.id;
         
         const newConversation: Conversation = {
-          id: conversationId,
+          id: data.conversation.id,
           title: data.conversation.title,
           messages: [],
           createdAt: new Date(data.conversation.created_at),
