@@ -60,12 +60,12 @@ export async function POST(request: NextRequest) {
     let extractedText = ''
     try {
       const input = { file: fileUrl, output_format: 'markdown_content' as const }
-      const output = await replicate.run(DOLPHIN_MODEL_ID, { input })
+      const output: unknown = await replicate.run(DOLPHIN_MODEL_ID, { input })
 
       if (typeof output === 'string') {
         extractedText = output.trim()
       } else if (Array.isArray(output)) {
-        extractedText = output.join('').trim()
+        extractedText = (output as unknown[]).map((v) => String(v)).join('').trim()
       } else if (output && typeof output === 'object') {
         extractedText = JSON.stringify(output)
       } else {
