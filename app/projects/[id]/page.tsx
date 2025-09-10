@@ -477,13 +477,13 @@ export default function ProjectChatPage() {
           for (const line of lines) {
             const trimmedLine = line.trim()
             
-            // Handle SSE format: data: {...}
+            // Handle our clean SSE format: data: {"content":"text"}
             if (trimmedLine.startsWith('data: ')) {
               const dataStr = trimmedLine.slice(6).trim()
               if (dataStr && dataStr !== '[DONE]') {
                 try {
                   const data = JSON.parse(dataStr)
-                  console.log('📄 Parsed SSE data:', data)
+                  console.log('📄 Parsed clean SSE data:', data)
                   
                   if (data.done) {
                     console.log('🏁 Stream marked as done')
@@ -508,26 +508,6 @@ export default function ProjectChatPage() {
                 } catch (e) {
                   console.warn('⚠️ Failed to parse SSE data:', dataStr, e)
                 }
-              }
-            }
-            // Handle raw SSE format: {"event":null,"data":"content","id":"..."}
-            else if (trimmedLine.startsWith('{') && trimmedLine.includes('"data"')) {
-              try {
-                const sseEvent = JSON.parse(trimmedLine)
-                console.log('📄 Parsed raw SSE event:', sseEvent)
-                
-                if (sseEvent.data && typeof sseEvent.data === 'string' && sseEvent.data.trim()) {
-                  assistantMessage += sseEvent.data
-                  const tempMessages = [...newMessages, {
-                    id: 'temp-assistant',
-                    content: assistantMessage,
-                    role: 'assistant' as const,
-                    timestamp: new Date()
-                  }]
-                  setMessages(tempMessages)
-                }
-              } catch (e) {
-                console.warn('⚠️ Failed to parse raw SSE event:', trimmedLine, e)
               }
             }
           }

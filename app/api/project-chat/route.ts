@@ -91,46 +91,47 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
             systemPromptLength: input.system_prompt.length 
           })
 
-          // Stream response from Replicate
-          for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
-            console.log('📄 Received chunk from Claude:', typeof event, event)
+          // Stream response from Replicate with proper SSE parsing
+          const replicateStream = replicate.stream("anthropic/claude-3.5-sonnet", { input })
+          
+          for await (const chunk of replicateStream) {
+            console.log('📄 Raw chunk from Replicate:', chunk)
             
-            // Extract actual content from Replicate's SSE stream
-            let content: string = ''
+            // Parse the SSE chunk properly
+            const chunkStr = String(chunk)
+            const lines = chunkStr.split('\n')
             
-            if (typeof event === 'string') {
-              // If it's a string, it might be the actual content
-              content = event
-            } else if (event && typeof event === 'object') {
-              const eventObj = event as any
+            for (const line of lines) {
+              const trimmedLine = line.trim()
               
-              // Check for different possible content structures
-              if (eventObj.data) {
-                // Handle SSE data field
-                if (typeof eventObj.data === 'string') {
-                  content = eventObj.data
-                } else if (eventObj.data.content) {
-                  content = String(eventObj.data.content)
-                } else if (eventObj.data.text) {
-                  content = String(eventObj.data.text)
+              // Handle SSE format: {"event":"output","data":"content","id":"..."}
+              if (trimmedLine.startsWith('{') && trimmedLine.includes('"event"')) {
+                try {
+                  const sseEvent = JSON.parse(trimmedLine)
+                  console.log('📄 Parsed SSE event:', sseEvent)
+                  
+                  // Only process "output" events with actual data
+                  if (sseEvent.event === 'output' && sseEvent.data && sseEvent.data.trim()) {
+                    const content = sseEvent.data.trim()
+                    console.log('📄 Extracted content:', content)
+                    
+                    const chunk = `data: ${JSON.stringify({ content })}\n\n`
+                    controller.enqueue(new TextEncoder().encode(chunk))
+                  }
+                  // Stop on "done" event
+                  else if (sseEvent.event === 'done') {
+                    console.log('🏁 Received done event from Replicate')
+                    break
+                  }
+                  // Handle errors
+                  else if (sseEvent.event === 'error') {
+                    console.error('❌ Error from Replicate:', sseEvent.data)
+                    throw new Error(sseEvent.data || 'Unknown error from Replicate')
+                  }
+                } catch (e) {
+                  console.warn('⚠️ Failed to parse SSE event:', trimmedLine, e)
                 }
-              } else if (eventObj.content) {
-                content = String(eventObj.content)
-              } else if (eventObj.text) {
-                content = String(eventObj.text)
-              } else if (eventObj.choices && eventObj.choices[0] && eventObj.choices[0].delta) {
-                // Handle OpenAI-style response
-                content = String(eventObj.choices[0].delta.content || '')
-              } else {
-                // Fallback: try to extract any text content
-                content = JSON.stringify(event)
               }
-            }
-            
-            // Only send non-empty content
-            if (content && content.trim()) {
-              const chunk = `data: ${JSON.stringify({ content: content.trim() })}\n\n`
-              controller.enqueue(new TextEncoder().encode(chunk))
             }
           }
 
