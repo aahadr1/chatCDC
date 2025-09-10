@@ -157,9 +157,12 @@ export default function ChatPage() {
     e.preventDefault()
     if (!inputMessage.trim() || loading || !currentConversationId) return
 
+    // Store the message content before clearing the input
+    const messageContent = inputMessage.trim()
+    
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: inputMessage,
+      content: messageContent,
       role: 'user',
       created_at: new Date().toISOString()
     }
@@ -178,6 +181,7 @@ export default function ChatPage() {
 
     try {
       // Call GPT-5 API
+      console.log('Sending messages to API:', newMessages)
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {

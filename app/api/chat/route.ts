@@ -6,6 +6,9 @@ export async function POST(request: NextRequest) {
   try {
     const { messages, conversationId, userId = 'anonymous' } = await request.json()
 
+    console.log('API received messages:', messages)
+    console.log('Last message content:', messages[messages.length - 1]?.content)
+
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 })
     }
@@ -15,6 +18,8 @@ export async function POST(request: NextRequest) {
       role: msg.role,
       content: msg.content
     }))
+
+    console.log('Converted chat messages:', chatMessages)
 
     // Save user message to database
     const userMessage = messages[messages.length - 1]
