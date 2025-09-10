@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { MessageCircle, Plus, Send, Loader2, Menu, X, LogOut, User, FolderPlus, Folder } from 'lucide-react'
+import { MessageCircle, Plus, Send, Loader2, Menu, X, LogOut, User, FolderPlus, Folder, Camera } from 'lucide-react'
 import { apiClient } from '@/lib/apiClient'
 import { useRouter } from 'next/navigation'
 
@@ -386,10 +386,18 @@ export default function ChatPage() {
           
           <button
             onClick={() => router.push('/projects')}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors"
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors mb-2"
           >
             <Folder className="w-4 h-4" />
             My Projects
+          </button>
+          
+          <button
+            onClick={() => router.push('/camera')}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-gray-600 hover:bg-gray-800 transition-colors"
+          >
+            <Camera className="w-4 h-4" />
+            Camera Recording
           </button>
         </div>
 
