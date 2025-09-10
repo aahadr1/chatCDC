@@ -95,26 +95,43 @@ Remember: Your knowledge is limited to the documents in this project's knowledge
           for await (const event of replicate.stream("anthropic/claude-3.5-sonnet", { input })) {
             console.log('📄 Received chunk from Claude:', typeof event, event)
             
-            // Handle different event formats from Replicate
+            // Extract actual content from Replicate's SSE stream
             let content: string = ''
+            
             if (typeof event === 'string') {
+              // If it's a string, it might be the actual content
               content = event
             } else if (event && typeof event === 'object') {
-              // If event is an object, try to extract the text content
-              const eventObj = event as any // Type assertion to handle unknown structure
-              if (eventObj.content) {
+              const eventObj = event as any
+              
+              // Check for different possible content structures
+              if (eventObj.data) {
+                // Handle SSE data field
+                if (typeof eventObj.data === 'string') {
+                  content = eventObj.data
+                } else if (eventObj.data.content) {
+                  content = String(eventObj.data.content)
+                } else if (eventObj.data.text) {
+                  content = String(eventObj.data.text)
+                }
+              } else if (eventObj.content) {
                 content = String(eventObj.content)
               } else if (eventObj.text) {
                 content = String(eventObj.text)
+              } else if (eventObj.choices && eventObj.choices[0] && eventObj.choices[0].delta) {
+                // Handle OpenAI-style response
+                content = String(eventObj.choices[0].delta.content || '')
               } else {
+                // Fallback: try to extract any text content
                 content = JSON.stringify(event)
               }
-            } else {
-              content = String(event)
             }
             
-            const chunk = `data: ${JSON.stringify({ content })}\n\n`
-            controller.enqueue(new TextEncoder().encode(chunk))
+            // Only send non-empty content
+            if (content && content.trim()) {
+              const chunk = `data: ${JSON.stringify({ content: content.trim() })}\n\n`
+              controller.enqueue(new TextEncoder().encode(chunk))
+            }
           }
 
           console.log('✅ Claude stream completed')
