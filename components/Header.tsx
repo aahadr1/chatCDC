@@ -21,14 +21,13 @@ export default function Header({ settings, onSettingsChange, currentTitle }: Hea
   ] as const;
 
   const verbosityLevels = [
-    { id: 'low', name: 'Concise', description: 'Short and direct' },
+    { id: 'minimal', name: 'Concise', description: 'Short and direct' },
     { id: 'medium', name: 'Balanced', description: 'Moderate detail' },
-    { id: 'high', name: 'Detailed', description: 'Comprehensive responses' },
+    { id: 'verbose', name: 'Detailed', description: 'Comprehensive responses' },
   ] as const;
 
   const reasoningLevels = [
     { id: 'minimal', name: 'Minimal', description: 'Quick responses' },
-    { id: 'low', name: 'Low', description: 'Basic reasoning' },
     { id: 'medium', name: 'Medium', description: 'Moderate reasoning' },
     { id: 'high', name: 'High', description: 'Deep reasoning' },
   ] as const;
