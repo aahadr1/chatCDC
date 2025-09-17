@@ -5,19 +5,10 @@ import { Buffer } from 'buffer'
 
 export const dynamic = 'force-dynamic'
 
-// Production-ready OCR models with fallback strategy
+// Production-ready OCR models with verified working IDs
 const OCR_MODELS = {
-  // Surya OCR - Excellent for layout analysis and modern documents
-  SURYA: 'vikp/surya_ocr:8b60bddbbb69afb41bae0872fe3fde01a7e59287fe63d4ab3b653d5e60c02786',
-  
-  // Marker - Outstanding for PDFs, especially academic/scientific documents  
-  MARKER: 'vikp/marker:b75b4b69dced5b4e11eb3e9af1b61f32b8fb7b2b5d85a20fdfb15c0b03bb8cf7',
-  
-  // Nougat - Specialized for academic PDFs with math/figures
-  NOUGAT: 'facebook/nougat:6e4f92b8f2014de76f43f41cfbfbc9c7f95da6e2a788de50a3c3a5d1e31b2de7',
-
-  // TrOCR - Microsoft's transformer OCR for images
-  TROCR: 'microsoft/trocr-base-printed:f82c0d4e5cd6afd0f1be8e6cbe37d8e7a9e8c4f5c6c7c8c9c0c1c2c3c4c5c6c7'
+  // Dolphin - Proven document parser (our working model)
+  DOLPHIN: 'bytedance/dolphin:19f1ad93970c2bf21442a842d01d97fb04a94a69d2b36dee43531a9cbae07e85'
 } as const
 
 // Maximum file size for single processing (10MB)
@@ -50,15 +41,8 @@ function selectOptimalModel(fileType: string, fileSize: number): string {
   const isImage = fileType.startsWith('image/')
   const isLargeFile = fileSize > MAX_SINGLE_FILE_SIZE
   
-  if (isPdf && isLargeFile) {
-    return OCR_MODELS.MARKER // Best for large PDFs
-  } else if (isPdf) {
-    return OCR_MODELS.SURYA  // Good balance for PDFs
-  } else if (isImage) {
-    return OCR_MODELS.TROCR  // Optimized for images
-  } else {
-    return OCR_MODELS.SURYA  // Default for other document types
-  }
+  // Always start with Dolphin as it's our proven working model
+  return OCR_MODELS.DOLPHIN
 }
 
 // Helper function to segment large documents
@@ -125,10 +109,11 @@ async function processDocumentWithOCR(
     console.log(`📝 Processing segment ${i + 1}/${segments.length}`)
     
     let segmentText = ''
-    const models = [optimalModel, ...Object.values(OCR_MODELS).filter(m => m !== optimalModel)]
     
-    // Try each model until one succeeds
-    for (const model of models) {
+    // Try Dolphin model with multiple attempts
+    const maxAttempts = 3
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      const model = OCR_MODELS.DOLPHIN
       try {
         console.log(`🚀 Trying model: ${model}`)
         
@@ -139,31 +124,16 @@ async function processDocumentWithOCR(
         let input: any
         let output: unknown
         
-        // Configure input based on model type
-        if (model === OCR_MODELS.SURYA) {
-          input = { image: segment }
+        // Configure input for Dolphin model
+        if (model === OCR_MODELS.DOLPHIN) {
+          input = { file: segment, output_format: 'markdown_content' }
           output = await Promise.race([
             replicate.run(model as `${string}/${string}:${string}`, { input }),
             timeout
           ])
-        } else if (model === OCR_MODELS.MARKER) {
-          input = { filepath: segment, max_pages: MAX_PAGES_PER_SEGMENT }
-          output = await Promise.race([
-            replicate.run(model as `${string}/${string}:${string}`, { input }),
-            timeout
-          ])
-        } else if (model === OCR_MODELS.NOUGAT) {
-          input = { file: segment }
-          output = await Promise.race([
-            replicate.run(model as `${string}/${string}:${string}`, { input }),
-            timeout
-          ])
-        } else if (model === OCR_MODELS.TROCR) {
-          input = { image: segment }
-          output = await Promise.race([
-            replicate.run(model as `${string}/${string}:${string}`, { input }),
-            timeout
-          ])
+        } else {
+          // Skip unknown models
+          continue
         }
         
         // Parse output based on model
@@ -178,20 +148,25 @@ async function processDocumentWithOCR(
         
         // Validate output
         if (segmentText && segmentText.length > 10) {
-          console.log(`✅ Model ${model} succeeded: ${segmentText.length} characters`)
+          console.log(`✅ Attempt ${attempt} succeeded: ${segmentText.length} characters`)
           break
         } else {
           throw new Error(`Insufficient text extracted: ${segmentText.length} characters`)
         }
         
       } catch (modelError) {
-        console.error(`❌ Model ${model} failed:`, modelError)
+        console.error(`❌ Attempt ${attempt}/${maxAttempts} failed:`, modelError)
+        if (attempt === maxAttempts) {
+          throw new Error(`All ${maxAttempts} attempts failed for segment ${i + 1}`)
+        }
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 2000))
         continue
       }
     }
     
     if (!segmentText) {
-      throw new Error(`All models failed for segment ${i + 1}`)
+      throw new Error(`Failed to extract text from segment ${i + 1} after ${maxAttempts} attempts`)
     }
     
     extractedTexts.push(segmentText)
@@ -302,7 +277,7 @@ export async function POST(request: NextRequest) {
         replicate
       )
       
-      processingMethod = 'Multi-Model OCR System'
+      processingMethod = 'Robust Dolphin OCR with Retry Logic'
       
       // Final validation
       if (!extractedText || extractedText.length < 5) {
