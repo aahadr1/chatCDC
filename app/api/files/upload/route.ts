@@ -3,7 +3,7 @@ import { getAuthenticatedUser } from '@/lib/supabaseServer'
 import { supabaseAdmin } from '@/lib/supabaseServer'
 import { v4 as uuidv4 } from 'uuid'
 
-// Allowed file types and their MIME types (Dolphin supported formats)
+// Allowed file types - comprehensive document support for production OCR system
 const ALLOWED_FILE_TYPES = {
   'application/pdf': ['.pdf'],
   'image/png': ['.png'],
@@ -11,7 +11,13 @@ const ALLOWED_FILE_TYPES = {
   'image/gif': ['.gif'],
   'image/bmp': ['.bmp'],
   'image/tiff': ['.tiff', '.tif'],
-  'image/webp': ['.webp']
+  'image/webp': ['.webp'],
+  'image/heic': ['.heic'],
+  'image/svg+xml': ['.svg'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/msword': ['.doc'],
+  'text/plain': ['.txt'],
+  'application/rtf': ['.rtf']
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB
