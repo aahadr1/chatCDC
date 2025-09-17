@@ -1,15 +1,47 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseServer'
 import { Buffer } from 'buffer'
+import OpenAI from 'openai'
+import Anthropic from '@anthropic-ai/sdk'
 
 export const dynamic = 'force-dynamic'
 
-// Text extraction methods in order of reliability
-const EXTRACTION_METHODS = {
-  NATIVE_PDF: 'native-pdf',
-  GOOGLE_VISION: 'google-vision', 
-  SIMPLE_OCR: 'simple-ocr'
+// LLM-based extraction models with massive context windows and vision capabilities
+const LLM_MODELS = {
+  // GPT-4o - 128K context, excellent vision capabilities
+  GPT4O: 'gpt-4o',
+  
+  // Claude 3.5 Sonnet - 200K context, superior document understanding
+  CLAUDE_35: 'claude-3-5-sonnet-20241022',
+  
+  // GPT-4o mini - Fast and efficient for smaller documents
+  GPT4O_MINI: 'gpt-4o-mini'
 } as const
+
+// Document extraction prompt for LLMs
+const EXTRACTION_PROMPT = `You are a professional document processing AI with expertise in extracting and organizing text from various document types. Your task is to:
+
+1. **EXTRACT ALL TEXT** from the provided document (PDF, image, scan, etc.)
+2. **PRESERVE STRUCTURE** including headers, paragraphs, lists, tables
+3. **ORGANIZE LOGICALLY** with clear formatting and hierarchy
+4. **HANDLE ANY LANGUAGE** and maintain original meaning
+5. **PROCESS ANY QUALITY** from high-resolution native PDFs to poor-quality scans
+
+**OUTPUT FORMAT:**
+Return the extracted text in clean, organized markdown format with:
+- Clear headings and subheadings
+- Proper paragraph breaks
+- Tables formatted as markdown tables
+- Lists formatted as markdown lists
+- Important information highlighted
+
+**SPECIAL INSTRUCTIONS:**
+- If text is unclear, use [UNCLEAR: best guess] notation
+- For mathematical formulas, use LaTeX notation
+- For complex tables, describe structure if markdown isn't sufficient
+- Always prioritize completeness over perfection
+
+Extract and organize ALL text content from this document:`
 
 // Maximum file size for single processing (10MB)
 const MAX_SINGLE_FILE_SIZE = 10 * 1024 * 1024
@@ -35,131 +67,221 @@ const SUPPORTED_TYPES = {
   'application/rtf': '.rtf'
 }
 
-// Try native PDF text extraction first (for PDFs with embedded text)
-async function extractNativePdfText(fileUrl: string): Promise<string | null> {
-  try {
-    console.log('📖 Attempting native PDF text extraction...')
-    
-    // Dynamically import pdf-parse to avoid build-time issues
-    const { default: pdfParse } = await import('pdf-parse')
-    
-    // Fetch the PDF file
-    const response = await fetch(fileUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch PDF: ${response.status}`)
-    }
-    
-    const buffer = await response.arrayBuffer()
-    const data = await pdfParse(Buffer.from(buffer))
-    
-    const text = data.text.trim()
-    
-    if (text && text.length > 20) {
-      console.log(`✅ Native PDF extraction successful: ${text.length} characters`)
-      return text
-    } else {
-      console.log('❌ Native PDF extraction returned insufficient text')
-      return null
-    }
-  } catch (error) {
-    console.error('❌ Native PDF extraction failed:', error)
-    return null
+// Convert file to base64 for LLM processing
+async function fileToBase64(fileUrl: string): Promise<string> {
+  const response = await fetch(fileUrl)
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file: ${response.status}`)
   }
+  const buffer = await response.arrayBuffer()
+  return Buffer.from(buffer).toString('base64')
 }
 
-// Simple text extraction for plain text files
-async function extractPlainText(fileUrl: string): Promise<string | null> {
-  try {
-    console.log('📄 Attempting plain text extraction...')
-    
-    const response = await fetch(fileUrl)
-    if (!response.ok) {
-      throw new Error(`Failed to fetch file: ${response.status}`)
-    }
-    
-    const text = await response.text()
-    
-    if (text && text.length > 5) {
-      console.log(`✅ Plain text extraction successful: ${text.length} characters`)
-      return text.trim()
-    } else {
-      console.log('❌ Plain text extraction returned insufficient text')
-      return null
-    }
-  } catch (error) {
-    console.error('❌ Plain text extraction failed:', error)
-    return null
+// Extract text using OpenAI GPT-4o with vision
+async function extractWithGPT4o(fileUrl: string, fileType: string): Promise<string> {
+  console.log('🤖 Attempting extraction with GPT-4o...')
+  
+  if (!process.env.OPENAI_API_KEY) {
+    throw new Error('OpenAI API key not configured')
   }
-}
-
-// Robust document processing with multiple fallback methods
-async function processDocumentWithMultipleMethods(
-  fileUrl: string, 
-  fileType: string,
-  fileSize: number
-): Promise<string> {
-  console.log(`🔍 Processing document: ${fileType}, ${Math.round(fileSize / 1024)}KB`)
+  
+  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
   
   const isPdf = fileType === 'application/pdf'
-  const isText = fileType === 'text/plain'
   const isImage = fileType.startsWith('image/')
+  const isText = fileType === 'text/plain'
   
-  let extractedText = ''
-  let successfulMethod = 'unknown'
+  // For text files, fetch content directly
+  if (isText) {
+    const response = await fetch(fileUrl)
+    const textContent = await response.text()
+    
+    const completion = await openai.chat.completions.create({
+      model: LLM_MODELS.GPT4O,
+      messages: [
+        {
+          role: "system",
+          content: EXTRACTION_PROMPT
+        },
+        {
+          role: "user",
+          content: `Please extract and organize the text from this document:\n\n${textContent}`
+        }
+      ],
+      max_tokens: 4000
+    })
+    
+    return completion.choices[0]?.message?.content || ''
+  }
   
-  // Method 1: Native PDF text extraction (for PDFs with embedded text)
+  // For images and PDFs, use vision capabilities
+  if (isImage || isPdf) {
+    const base64 = await fileToBase64(fileUrl)
+    const mimeType = fileType === 'application/pdf' ? 'image/png' : fileType // PDFs will be treated as images
+    
+    const completion = await openai.chat.completions.create({
+      model: LLM_MODELS.GPT4O,
+      messages: [
+        {
+          role: "system", 
+          content: EXTRACTION_PROMPT
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Please extract and organize ALL text from this document. Handle any quality level from perfect scans to poor quality images."
+            },
+            {
+              type: "image_url",
+              image_url: {
+                url: `data:${mimeType};base64,${base64}`,
+                detail: "high"
+              }
+            }
+          ]
+        }
+      ],
+      max_tokens: 4000
+    })
+    
+    return completion.choices[0]?.message?.content || ''
+  }
+  
+  throw new Error(`Unsupported file type for GPT-4o: ${fileType}`)
+}
+
+// Extract text using Claude 3.5 Sonnet with vision
+async function extractWithClaude35(fileUrl: string, fileType: string): Promise<string> {
+  console.log('🧠 Attempting extraction with Claude 3.5 Sonnet...')
+  
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error('Anthropic API key not configured')
+  }
+  
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+  
+  const isPdf = fileType === 'application/pdf'
+  const isImage = fileType.startsWith('image/')
+  const isText = fileType === 'text/plain'
+  
+  // For text files, process directly
+  if (isText) {
+    const response = await fetch(fileUrl)
+    const textContent = await response.text()
+    
+    const message = await anthropic.messages.create({
+      model: LLM_MODELS.CLAUDE_35,
+      max_tokens: 4000,
+      messages: [
+        {
+          role: "user",
+          content: `${EXTRACTION_PROMPT}\n\nDocument content:\n${textContent}`
+        }
+      ]
+    })
+    
+    return message.content[0]?.type === 'text' ? message.content[0].text : ''
+  }
+  
+  // For images and PDFs, use vision capabilities
+  if (isImage || isPdf) {
+    const base64 = await fileToBase64(fileUrl)
+    const mimeType = fileType === 'application/pdf' ? 'image/png' : fileType
+    
+    const message = await anthropic.messages.create({
+      model: LLM_MODELS.CLAUDE_35,
+      max_tokens: 4000,
+      messages: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: `${EXTRACTION_PROMPT}\n\nPlease extract and organize ALL text from this document image.`
+            },
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: mimeType as any,
+                data: base64
+              }
+            }
+          ]
+        }
+      ]
+    })
+    
+    return message.content[0]?.type === 'text' ? message.content[0].text : ''
+  }
+  
+  throw new Error(`Unsupported file type for Claude: ${fileType}`)
+}
+
+// Fallback: Simple PDF text extraction for native PDFs
+async function extractNativePdfText(fileUrl: string): Promise<string> {
+  console.log('📄 Attempting native PDF text extraction as fallback...')
+  
+  const { default: pdfParse } = await import('pdf-parse')
+  const response = await fetch(fileUrl)
+  const buffer = await response.arrayBuffer()
+  const data = await pdfParse(Buffer.from(buffer))
+  
+  return data.text.trim()
+}
+
+// Main LLM-based document processing with intelligent fallbacks
+async function processDocumentWithLLM(
+  fileUrl: string,
+  fileType: string,
+  fileSize: number
+): Promise<{ text: string; method: string }> {
+  console.log(`🧠 Processing document with LLM: ${fileType}, ${Math.round(fileSize / 1024)}KB`)
+  
+  const isPdf = fileType === 'application/pdf'
+  const isImage = fileType.startsWith('image/')
+  const isText = fileType === 'text/plain'
+  
+  // Define extraction strategies in order of preference
+  const strategies = [
+    { name: 'Claude 3.5 Sonnet', fn: () => extractWithClaude35(fileUrl, fileType) },
+    { name: 'GPT-4o', fn: () => extractWithGPT4o(fileUrl, fileType) }
+  ]
+  
+  // Add native PDF extraction as fallback for PDFs
   if (isPdf) {
-    const nativeText = await extractNativePdfText(fileUrl)
-    if (nativeText) {
-      extractedText = nativeText
-      successfulMethod = 'Native PDF Text Extraction'
+    strategies.push({ 
+      name: 'Native PDF Parser', 
+      fn: () => extractNativePdfText(fileUrl) 
+    })
+  }
+  
+  // Try each strategy
+  for (const strategy of strategies) {
+    try {
+      console.log(`🚀 Trying: ${strategy.name}`)
+      
+      const extractedText = await strategy.fn()
+      
+      if (extractedText && extractedText.length > 20) {
+        console.log(`✅ ${strategy.name} succeeded: ${extractedText.length} characters`)
+        return {
+          text: extractedText,
+          method: strategy.name
+        }
+      } else {
+        throw new Error(`Insufficient text extracted: ${extractedText.length} characters`)
+      }
+      
+    } catch (error) {
+      console.error(`❌ ${strategy.name} failed:`, error)
+      continue
     }
   }
   
-  // Method 2: Plain text extraction (for text files)
-  if (!extractedText && isText) {
-    const plainText = await extractPlainText(fileUrl)
-    if (plainText) {
-      extractedText = plainText
-      successfulMethod = 'Plain Text Extraction'
-    }
-  }
-  
-  // Method 3: For images and scanned PDFs, we need OCR but since Replicate models failed,
-  // we'll return an informative message for now
-  if (!extractedText && (isImage || isPdf)) {
-    console.log('🔍 Document appears to be image-based or scanned PDF')
-    
-    // For now, return a message indicating OCR is needed
-    // In production, you'd integrate with Google Vision API, Azure Computer Vision, or AWS Textract
-    extractedText = `[SCANNED DOCUMENT DETECTED]
-
-This document appears to be a scanned PDF or image that requires OCR (Optical Character Recognition) processing.
-
-To extract text from this document, you would need to integrate with one of these services:
-- Google Cloud Vision API
-- Azure Computer Vision
-- AWS Textract
-- Or deploy a local OCR solution
-
-Document details:
-- Type: ${fileType}
-- Size: ${Math.round(fileSize / 1024)}KB
-- URL: ${fileUrl}
-
-Please configure an OCR service to process this type of document.`
-    
-    successfulMethod = 'OCR Required Notice'
-  }
-  
-  if (!extractedText) {
-    throw new Error(`No suitable extraction method found for file type: ${fileType}`)
-  }
-  
-  console.log(`🎉 Successfully extracted text using: ${successfulMethod}`)
-  console.log(`📊 Final text length: ${extractedText.length} characters`)
-  
-  return extractedText
+  throw new Error('All LLM extraction methods failed')
 }
 
 export async function POST(request: NextRequest) {
@@ -238,36 +360,41 @@ export async function POST(request: NextRequest) {
       console.error('❌ Error resolving file URL:', urlError)
     }
 
-    // Extract text using multi-method approach
+    // Extract text using LLM-based approach
     let extractedText = ''
     let processingMethod = 'Unknown'
     
     try {
-      console.log(`🚀 Starting multi-method text extraction for ${fileName}`)
+      console.log(`🧠 Starting LLM-based text extraction for ${fileName}`)
       
-      extractedText = await processDocumentWithMultipleMethods(
+      const result = await processDocumentWithLLM(
         accessibleUrl,
         fileType,
         fileSize
       )
       
-      processingMethod = 'Multi-Method Text Extraction'
+      extractedText = result.text
+      processingMethod = `LLM Processing: ${result.method}`
       
       // Final validation
         if (!extractedText || extractedText.length < 5) {
         throw new Error('Insufficient text extracted from document')
       }
       
-      console.log(`✅ Text extraction completed: ${extractedText.length} characters extracted`)
-      
+      console.log(`✅ LLM extraction completed: ${extractedText.length} characters extracted`)
+        
     } catch (err) {
-      console.error('❌ Text extraction failed:', err)
+      console.error('❌ LLM text extraction failed:', err)
       console.error('Error details:', {
         message: err instanceof Error ? err.message : 'Unknown error',
         stack: err instanceof Error ? err.stack : undefined,
         fileType,
         fileSize,
-        fileName
+        fileName,
+        availableKeys: {
+          openai: !!process.env.OPENAI_API_KEY,
+          anthropic: !!process.env.ANTHROPIC_API_KEY
+        }
       })
       
       // Mark failed and return
@@ -275,13 +402,14 @@ export async function POST(request: NextRequest) {
         .from('project_documents')
         .update({ 
           processing_status: 'failed', 
-          processing_error: err instanceof Error ? err.message : 'Text extraction failed',
-          processing_notes: `Failed with file: ${fileName} (${fileType}, ${Math.round(fileSize / 1024)}KB)`
+          processing_error: err instanceof Error ? err.message : 'LLM text extraction failed',
+          processing_notes: `Failed with file: ${fileName} (${fileType}, ${Math.round(fileSize / 1024)}KB) - Check API keys`
         })
         .eq('id', documentId)
       return NextResponse.json({ 
         error: 'Document text extraction failed', 
-        details: err instanceof Error ? err.message : 'Unknown error' 
+        details: err instanceof Error ? err.message : 'Unknown error',
+        suggestion: 'Please ensure OPENAI_API_KEY or ANTHROPIC_API_KEY is configured'
       }, { status: 500 })
     }
 
@@ -325,7 +453,7 @@ export async function POST(request: NextRequest) {
       console.error('❌ Failed to update knowledge base:', kbUpdateError)
     }
 
-    console.log(`🎉 Document processing completed successfully using ${processingMethod}`)
+    console.log(`🧠 Document processing completed successfully using ${processingMethod}`)
     console.log(`📊 Final stats: ${extractedText.length} characters, ${Math.round(fileSize / 1024)}KB processed`)
     
     return NextResponse.json({ 
@@ -333,7 +461,7 @@ export async function POST(request: NextRequest) {
       textLength: extractedText.length,
       processingMethod: processingMethod,
       fileSize: Math.round(fileSize / 1024),
-      message: `Text extracted successfully using multi-method approach`
+      message: `Text extracted and organized successfully using advanced LLM processing`
     })
   } catch (error) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
