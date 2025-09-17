@@ -21,6 +21,7 @@
     "lucide-react": "^0.294.0",
     "multer": "^2.0.2",
     "next": "14.0.4",
+    "pdf-parse": "^1.1.1",
     "postcss": "^8.4.32",
     "react": "^18",
     "react-dom": "^18",

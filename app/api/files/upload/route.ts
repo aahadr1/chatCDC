@@ -11,7 +11,10 @@ const ALLOWED_FILE_TYPES = {
   'image/gif': ['.gif'],
   'image/bmp': ['.bmp'],
   'image/tiff': ['.tiff', '.tif'],
-  'image/webp': ['.webp']
+  'image/webp': ['.webp'],
+  'text/plain': ['.txt'],
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+  'application/msword': ['.doc']
 }
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024 // 50MB

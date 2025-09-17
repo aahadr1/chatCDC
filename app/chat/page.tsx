@@ -210,7 +210,7 @@ export default function ChatPage() {
   // Handle keyboard shortcuts
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
+    e.preventDefault()
       handleSendMessage()
     }
   }
@@ -473,9 +473,9 @@ export default function ChatPage() {
                 {conversations.find(c => c.id === currentConversationId)?.title || 'ChatCDC'}
               </h1>
               <p className="text-sm text-gray-500">Powered by GPT-5</p>
-            </div>
           </div>
-        </header>
+        </div>
+      </header>
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto">
@@ -484,14 +484,14 @@ export default function ChatPage() {
               <div className="text-center max-w-md mx-auto px-4">
                 <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
                   <MessageCircle className="w-8 h-8 text-blue-600" />
-                </div>
+              </div>
                 <h2 className="text-2xl font-semibold text-gray-900 mb-4">
-                  Welcome to ChatCDC
-                </h2>
+                Welcome to ChatCDC
+              </h2>
                 <p className="text-gray-600 leading-relaxed">
                   I'm your AI assistant powered by GPT-5. Ask me anything - from coding help to creative writing, 
                   analysis, math problems, or just casual conversation. How can I help you today?
-                </p>
+              </p>
               </div>
             </div>
           ) : (
@@ -512,7 +512,7 @@ export default function ChatPage() {
                     </div>
                     <div className={`flex-1 ${message.role === 'user' ? 'text-right' : ''}`}>
                       <div className={`inline-block max-w-[80%] px-4 py-3 rounded-2xl ${
-                        message.role === 'user'
+                    message.role === 'user'
                           ? 'bg-blue-600 text-white'
                           : 'bg-white border border-gray-200 text-gray-900'
                       }`}>
@@ -522,8 +522,8 @@ export default function ChatPage() {
                   </div>
                 </div>
               ))}
-              
-              {loading && (
+          
+          {loading && (
                 <div className="group">
                   <div className="flex gap-4">
                     <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
@@ -531,7 +531,7 @@ export default function ChatPage() {
                     </div>
                     <div className="flex-1">
                       <div className="inline-block bg-white border border-gray-200 px-4 py-3 rounded-2xl">
-                        <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                           <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
                           <span className="text-gray-500">Thinking...</span>
                         </div>
@@ -554,21 +554,21 @@ export default function ChatPage() {
                 <div className="relative">
                   <textarea
                     ref={textareaRef}
-                    value={inputMessage}
+              value={inputMessage}
                     onChange={handleInputChange}
                     onKeyDown={handleKeyDown}
                     placeholder="Message ChatCDC..."
                     className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent max-h-32"
                     style={{ minHeight: '50px' }}
-                    disabled={loading}
-                  />
-                  <button
+              disabled={loading}
+            />
+            <button
                     onClick={handleSendMessage}
-                    disabled={loading || !inputMessage.trim()}
+              disabled={loading || !inputMessage.trim()}
                     className="absolute right-2 bottom-2 w-8 h-8 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed rounded-full flex items-center justify-center transition-colors"
-                  >
+            >
                     <Send className="w-4 h-4 text-white" />
-                  </button>
+            </button>
                 </div>
               </div>
             </div>
