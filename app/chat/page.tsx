@@ -75,9 +75,14 @@ export default function ChatPage() {
       const { data, error } = await apiClient.getConversations()
 
       if (error) throw new Error(error)
-
-      if (data if (data?.conversations && data.conversations.length > 0) {if (data?.conversations && data.conversations.length > 0) { typeof data === "object" if (data?.conversations && data.conversations.length > 0) {if (data?.conversations && data.conversations.length > 0) { "conversations" in data if (data?.conversations && data.conversations.length > 0) {if (data?.conversations && data.conversations.length > 0) { (data as any).conversations.length > 0) {
-        const conversations = (data as any).conversations.map(conv => ({
+      if (
+        data &&
+        typeof data === 'object' &&
+        'conversations' in data &&
+        Array.isArray((data as any).conversations) &&
+        (data as any).conversations.length > 0
+      ) {
+        const conversations = (data as any).conversations.map((conv: any) => ({
           id: conv.id,
           title: conv.title,
           messages: [],
@@ -102,9 +107,13 @@ export default function ChatPage() {
       const { data, error } = await apiClient.getMessages(conversationId)
 
       if (error) throw new Error(error)
-
-      if (data if (data?.messages) {if (data?.messages) { typeof data === "object" if (data?.messages) {if (data?.messages) { "messages" in data) {
-        const messages = (data as any).messages.map(msg => ({
+      if (
+        data &&
+        typeof data === 'object' &&
+        'messages' in data &&
+        Array.isArray((data as any).messages)
+      ) {
+        const messages = (data as any).messages.map((msg: any) => ({
           id: msg.id,
           content: msg.content,
           role: msg.role as 'user' | 'assistant',
@@ -124,14 +133,19 @@ export default function ChatPage() {
       const { data, error } = await apiClient.createConversation('New Chat')
 
       if (error) throw new Error(error)
-
-      if (data if (data?.conversation) {if (data?.conversation) { typeof data === "object" if (data?.conversation) {if (data?.conversation) { "conversation" in data) {
+      if (
+        data &&
+        typeof data === 'object' &&
+        'conversation' in data &&
+        (data as any).conversation
+      ) {
+        const convData = (data as any).conversation
         const newConversation: Conversation = {
-          id: data.conversation.id,
-          title: data.conversation.title,
+          id: convData.id,
+          title: convData.title,
           messages: [],
-          createdAt: new Date(data.conversation.created_at),
-          updatedAt: new Date(data.conversation.updated_at)
+          createdAt: new Date(convData.created_at),
+          updatedAt: new Date(convData.updated_at)
         }
 
         setConversations(prev => [newConversation, ...prev])
@@ -237,11 +251,12 @@ export default function ChatPage() {
 
       if (userMessageError) throw new Error(userMessageError)
 
+      const userMsg = (userMessageData as any).message
       const userMessage: Message = {
-        id: userMessageData.message.id,
-        content: userMessageData.message.content,
+        id: userMsg.id,
+        content: userMsg.content,
         role: 'user',
-        timestamp: new Date(userMessageData.message.created_at)
+        timestamp: new Date(userMsg.created_at)
       }
 
       // Update conversation title if it's the first message
@@ -330,11 +345,12 @@ export default function ChatPage() {
 
       if (assistantMessageError) throw new Error(assistantMessageError)
 
+      const assistantMsg = (assistantMessageData as any).message
       const finalAssistantMessage: Message = {
-        id: assistantMessageData.message.id,
-        content: assistantMessageData.message.content,
+        id: assistantMsg.id,
+        content: assistantMsg.content,
         role: 'assistant',
-        timestamp: new Date(assistantMessageData.message.created_at)
+        timestamp: new Date(assistantMsg.created_at)
       }
 
       const finalMessages = [...newMessages, finalAssistantMessage]

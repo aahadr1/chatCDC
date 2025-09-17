@@ -36,12 +36,12 @@ export function rateLimit(
     const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown'
     const now = Date.now()
     
-    // Clean up expired entries
-    for (const [key, value] of rateLimitStore.entries()) {
+    // Clean up expired entries (avoid downlevel iteration issues)
+    rateLimitStore.forEach((value, key) => {
       if (now > value.resetTime) {
         rateLimitStore.delete(key)
       }
-    }
+    })
     
     const current = rateLimitStore.get(ip)
     

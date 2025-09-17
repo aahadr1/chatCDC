@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabaseServer'
 import Replicate from 'replicate'
-import pdfParse from 'pdf-parse'
+
+export const dynamic = 'force-dynamic'
 
 // Model ids for text extraction with fallback strategy
 const DOLPHIN_MODEL_ID = 'bytedance/dolphin:19f1ad93970c2bf21442a842d01d97fb04a94a69d2b36dee43531a9cbae07e85'
@@ -169,7 +170,10 @@ export async function POST(request: NextRequest) {
           )
           
           const output: unknown = await Promise.race([
-            replicate.run(strategy.modelId!, { input: strategy.input }),
+            replicate.run(
+              strategy.modelId as `${string}/${string}` | `${string}/${string}:${string}`,
+              { input: strategy.input }
+            ),
             timeout
           ])
           
@@ -181,11 +185,12 @@ export async function POST(request: NextRequest) {
             result = JSON.stringify(output)
           }
         } else if (strategy.method === 'pdf-parse') {
-          // Direct PDF parsing fallback
+          // Direct PDF parsing fallback (dynamically import to avoid build-time issues)
           const response = await fetch(accessibleUrl)
           const buffer = await response.arrayBuffer()
+          const { default: pdfParse } = await import('pdf-parse')
           const data = await pdfParse(Buffer.from(buffer))
-          result = data.text.trim()
+          result = (data?.text || '').trim()
         } else if (strategy.method === 'text') {
           // Simple text extraction
           const response = await fetch(accessibleUrl)
