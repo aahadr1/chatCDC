@@ -15,7 +15,8 @@ import {
   FileSpreadsheet,
   File
 } from 'lucide-react'
-import { supabase, getCurrentUser } from '@/lib/supabaseClient'
+import { apiClient } from '@/lib/apiClient'
+import { supabase } from '@/lib/supabaseClient'
 
 interface UploadedFile {
   id: string
@@ -44,17 +45,23 @@ export default function NewProjectPage() {
   // Initialize user
   useEffect(() => {
     const initializeUser = async () => {
-      const { user } = await getCurrentUser()
-      if (user) {
-        setUser({
-          id: user.id,
-          email: user.email!
-        })
-      } else {
+      try {
+        const response = await apiClient.getCurrentUser()
+        if (response.data && (response.data as any).user) {
+          const userData = response.data as any
+          setUser({
+            id: userData.user.id,
+            email: userData.user.email
+          })
+        } else {
+          router.push('/auth')
+        }
+      } catch (error) {
+        console.error('Error getting current user:', error)
         router.push('/auth')
       }
     }
-    
+
     initializeUser()
   }, [router])
 
