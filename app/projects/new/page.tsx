@@ -42,10 +42,14 @@ export default function NewProjectPage() {
   const [globalProgress, setGlobalProgress] = useState(0)
   const [currentStep, setCurrentStep] = useState<'upload' | 'processing' | 'complete'>('upload')
 
-  // Initialize user
+  // Initialize user and API auth token
   useEffect(() => {
     const initializeUser = async () => {
       try {
+        // Ensure API client has Authorization header
+        const { data: { session } } = await supabase.auth.getSession()
+        apiClient.setAccessToken(session?.access_token || null)
+
         const response = await apiClient.getCurrentUser()
         if (response.data && (response.data as any).user) {
           const userData = response.data as any
@@ -126,37 +130,17 @@ export default function NewProjectPage() {
     setCurrentStep('processing')
 
     try {
-      // Create project in database
-      const { data: project, error: projectError } = await supabase
-        .from('projects')
-        .insert({
-          name: projectName.trim(),
-          description: projectDescription.trim() || null,
-          user_id: user.id,
-          status: 'processing'
-        })
-        .select()
-        .single()
+      // Create project through API
+      const projectResponse = await apiClient.createProject(
+        projectName.trim(),
+        projectDescription.trim() || undefined
+      )
 
-      if (projectError) throw projectError
+      if (projectResponse.error) {
+        throw new Error(projectResponse.error)
+      }
 
-      // Create processing job
-      const { data: job, error: jobError } = await supabase
-        .from('processing_jobs')
-        .insert({
-          project_id: project.id,
-          user_id: user.id,
-          job_type: 'file_processing',
-          status: 'processing',
-          total_files: uploadedFiles.length,
-          processed_files: 0,
-          progress: 0,
-          started_at: new Date().toISOString()
-        })
-        .select()
-        .single()
-
-      if (jobError) throw jobError
+      const project = projectResponse.data as any
 
       // Process files sequentially
       let processedCount = 0
@@ -170,45 +154,39 @@ export default function NewProjectPage() {
               : f
           ))
 
-          // Upload file to Supabase Storage
+          // Upload file to Supabase Storage through API
           const fileExt = uploadedFile.file.name.split('.').pop()
           const fileName = `${user.id}/${project.id}/${uploadedFile.id}.${fileExt}`
-          
-          const { error: uploadError } = await supabase.storage
-            .from('project-documents')
-            .upload(fileName, uploadedFile.file)
 
-          if (uploadError) throw uploadError
+          // Upload file through API route
+          const uploadResponse = await fetch('/api/files/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+            },
+            body: (() => {
+              const formData = new FormData()
+              formData.append('files', uploadedFile.file)
+              formData.append('projectId', project.id)
+              formData.append('userId', user.id)
+              return formData
+            })()
+          })
+
+          if (!uploadResponse.ok) {
+            const errorData = await uploadResponse.json()
+            throw new Error(errorData.error || 'File upload failed')
+          }
+
+          const uploadData = await uploadResponse.json()
+          const document = uploadData.file
 
           // Update progress
-          setUploadedFiles(prev => prev.map(f => 
-            f.id === uploadedFile.id 
+          setUploadedFiles(prev => prev.map(f =>
+            f.id === uploadedFile.id
               ? { ...f, progress: 50 }
               : f
           ))
-
-          // Get file URL
-          const { data: urlData } = supabase.storage
-            .from('project-documents')
-            .getPublicUrl(fileName)
-
-          // Save document record to database
-          const { data: document, error: docError } = await supabase
-            .from('project_documents')
-            .insert({
-              project_id: project.id,
-              user_id: user.id,
-              filename: fileName,
-              original_filename: uploadedFile.file.name,
-              file_type: uploadedFile.file.type,
-              file_size: uploadedFile.file.size,
-              file_url: urlData.publicUrl,
-              processing_status: 'pending'
-            })
-            .select()
-            .single()
-
-          if (docError) throw docError
 
           // Start text extraction
           setUploadedFiles(prev => prev.map(f => 
@@ -222,19 +200,20 @@ export default function NewProjectPage() {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`
+              'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token || ''}`
             },
             body: JSON.stringify({
               documentId: document.id,
               projectId: project.id,
-              fileUrl: urlData.publicUrl,
+              fileUrl: document.file_url,
               fileName: uploadedFile.file.name,
               fileType: uploadedFile.file.type
             })
           })
 
           if (!extractResponse.ok) {
-            throw new Error('Text extraction failed')
+            const errorData = await extractResponse.json()
+            throw new Error(errorData.error || 'Text extraction failed')
           }
 
           // Update file status to completed
@@ -245,29 +224,20 @@ export default function NewProjectPage() {
           ))
 
           processedCount++
-          
-          // Update job progress
+
+          // Update job progress (this would need to be implemented in the API)
           const jobProgress = Math.round((processedCount / uploadedFiles.length) * 100)
           setGlobalProgress(jobProgress)
-          
-          await supabase
-            .from('processing_jobs')
-            .update({
-              processed_files: processedCount,
-              progress: jobProgress,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', job.id)
 
         } catch (fileError) {
           console.error(`Error processing file ${uploadedFile.file.name}:`, fileError)
-          
+
           // Update file status to error
-          setUploadedFiles(prev => prev.map(f => 
-            f.id === uploadedFile.id 
-              ? { 
-                  ...f, 
-                  status: 'error' as const, 
+          setUploadedFiles(prev => prev.map(f =>
+            f.id === uploadedFile.id
+              ? {
+                  ...f,
+                  status: 'error' as const,
                   error: fileError instanceof Error ? fileError.message : 'Unknown error'
                 }
               : f
@@ -275,23 +245,7 @@ export default function NewProjectPage() {
         }
       }
 
-      // Complete the job
-      await supabase
-        .from('processing_jobs')
-        .update({
-          status: 'completed',
-          progress: 100,
-          completed_at: new Date().toISOString()
-        })
-        .eq('id', job.id)
-
-      // Update project status
-      await supabase
-        .from('projects')
-        .update({
-          status: 'completed'
-        })
-        .eq('id', project.id)
+      // Project creation is complete - the API handles the job creation and completion
 
       setCurrentStep('complete')
       

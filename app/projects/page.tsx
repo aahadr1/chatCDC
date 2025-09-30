@@ -14,7 +14,8 @@ import {
   AlertCircle,
   Loader2
 } from 'lucide-react'
-import { supabase, getCurrentUser } from '@/lib/supabaseClient'
+import { supabase } from '@/lib/supabaseClient'
+import { apiClient } from '@/lib/apiClient'
 
 interface Project {
   id: string
@@ -40,37 +41,29 @@ export default function ProjectsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
 
-  // Initialize user and load projects
+  // Initialize user and load projects using API
   useEffect(() => {
     const initializeUser = async () => {
-      const { user } = await getCurrentUser()
-      if (user) {
-        setUser({
-          id: user.id,
-          email: user.email!
-        })
-        await loadProjects(user.id)
-      } else {
-        router.push('/auth')
-      }
+      const { data: { session } } = await supabase.auth.getSession()
+      apiClient.setAccessToken(session?.access_token || null)
+
+      const me = await apiClient.getCurrentUser()
+      const meUser = (me.data as any)?.user
+      if (!meUser) return router.push('/auth')
+
+      setUser({ id: meUser.id, email: meUser.email })
+      await loadProjects()
     }
     
     initializeUser()
   }, [router])
 
-  const loadProjects = async (userId: string) => {
+  const loadProjects = async () => {
     try {
       setLoading(true)
-      
-      const { data: projectsData, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('user_id', userId)
-        .order('updated_at', { ascending: false })
-
-      if (error) throw error
-
-      setProjects(projectsData || [])
+      const res = await apiClient.getProjects(searchQuery || undefined, statusFilter || undefined)
+      if (res.error) throw new Error(res.error)
+      setProjects(((res.data as any)?.projects) || [])
     } catch (error) {
       console.error('Error loading projects:', error)
     } finally {
