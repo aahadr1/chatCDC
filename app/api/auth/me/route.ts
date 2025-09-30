@@ -3,7 +3,7 @@ import { getAuthenticatedUser } from '@/lib/supabaseServer'
 
 export async function GET(request: NextRequest) {
   try {
-    // Verify user authentication
+    // Verify user authentication (Authorization header or sb-access-token cookie)
     const { user, error: authError } = await getAuthenticatedUser(request as unknown as Request)
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
