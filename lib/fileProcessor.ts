@@ -209,13 +209,21 @@ export function buildFileContext(files: ProcessedFile[]): string {
     }
   })
   
-  // Handle image files
+  // Handle image files with OCR instructions
   if (imageFiles.length > 0) {
     context += `\n### Images Attached (${imageFiles.length}):\n`
     imageFiles.forEach((file, i) => {
       context += `- Image ${i + 1}: "${file.file_name}" (${file.file_type})\n`
     })
-    context += `\nNote: These images have been sent to the vision model for analysis. Please describe what you see in the images if relevant to the user's question.\n`
+    context += `
+**IMPORTANT - OCR/Vision Instructions:**
+These images have been sent to your vision capabilities. You MUST:
+1. Read and extract ALL text visible in the images (OCR)
+2. Describe any diagrams, charts, tables, or visual elements
+3. If it's a document/screenshot, transcribe the full text content
+4. If it's a photo with text (signs, labels, etc.), read that text
+5. Provide the extracted text in your response when relevant to the user's question
+`
   }
   
   context += '\n---\n'

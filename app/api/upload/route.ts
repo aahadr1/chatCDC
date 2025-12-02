@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
 import { isAllowedFileType, MAX_FILE_SIZE, MAX_FILES_PER_MESSAGE, formatFileSize } from '@/lib/fileProcessor'
-
-// Fixed UUID for anonymous users
-const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+// @ts-ignore - pdf-parse types
+import pdfParse from 'pdf-parse'
 
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
     const conversationId = formData.get('conversationId') as string
-    const userId = formData.get('userId') as string || ANONYMOUS_USER_ID
+    const userId = formData.get('userId') as string
 
     if (!files || files.length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })
@@ -47,6 +46,7 @@ export async function POST(request: NextRequest) {
 
         // Convert file to buffer
         const fileBuffer = await file.arrayBuffer()
+        const buffer = Buffer.from(fileBuffer)
 
         // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
@@ -67,40 +67,72 @@ export async function POST(request: NextRequest) {
           .from('documents')
           .getPublicUrl(filePath)
 
-        // Extract text content for text-based files
-        let content = null
+        // Extract text content based on file type
+        let content: string | null = null
+        
+        // Text-based files
         if (file.type.startsWith('text/') || file.type === 'application/json') {
           content = await file.text()
         }
+        
+        // PDF files - extract text using pdf-parse
+        if (file.type === 'application/pdf') {
+          try {
+            const pdfData = await pdfParse(buffer)
+            content = pdfData.text
+            console.log(`Extracted ${content.length} characters from PDF: ${file.name}`)
+          } catch (pdfError) {
+            console.error('PDF parsing error:', pdfError)
+            // PDF might be image-based, we'll note this
+            content = '[PDF contains scanned images - OCR will be performed by vision model]'
+          }
+        }
 
         // Save file metadata to database
-        const { data: fileData, error: dbError } = await supabase
-          .from('uploaded_files')
-          .insert({
+        try {
+          const { data: fileData, error: dbError } = await supabase
+            .from('uploaded_files')
+            .insert({
+              id: fileId,
+              conversation_id: conversationId,
+              user_id: userId,
+              file_name: file.name,
+              file_path: filePath,
+              file_url: urlData.publicUrl,
+              file_size: file.size,
+              file_type: file.type,
+              content: content?.substring(0, 100000), // Store first 100k chars
+              created_at: new Date().toISOString()
+            })
+            .select()
+            .single()
+
+          if (dbError) {
+            console.warn('Database error:', dbError)
+          }
+
+          uploadedFiles.push({
             id: fileId,
-            conversation_id: conversationId,
-            user_id: userId,
             file_name: file.name,
             file_path: filePath,
             file_url: urlData.publicUrl,
             file_size: file.size,
             file_type: file.type,
-            content: content?.substring(0, 50000), // Store first 50k chars
-            created_at: new Date().toISOString()
+            content: content
           })
-          .select()
-          .single()
-
-        if (dbError) {
-          console.error('Database error:', dbError)
-          errors.push({ file: file.name, error: 'Failed to save file metadata' })
-          continue
+        } catch (dbErr) {
+          // Continue even if DB save fails
+          console.warn('Could not save to database:', dbErr)
+          uploadedFiles.push({
+            id: fileId,
+            file_name: file.name,
+            file_path: filePath,
+            file_url: urlData.publicUrl,
+            file_size: file.size,
+            file_type: file.type,
+            content: content
+          })
         }
-
-        uploadedFiles.push({
-          ...fileData,
-          content: content // Include content for processing
-        })
       } catch (error) {
         console.error(`Error processing file ${file.name}:`, error)
         errors.push({ file: file.name, error: 'Failed to process file' })
@@ -123,7 +155,7 @@ export async function POST(request: NextRequest) {
 // Handle file deletion
 export async function DELETE(request: NextRequest) {
   try {
-    const { fileId, userId } = await request.json()
+    const { fileId } = await request.json()
 
     if (!fileId) {
       return NextResponse.json({ error: 'File ID required' }, { status: 400 })
@@ -161,4 +193,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

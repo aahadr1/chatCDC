@@ -20,6 +20,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 })
     }
 
+    // Check if images are being sent
+    const hasImages = settings.imageUrls && settings.imageUrls.length > 0
+
     // Build enhanced system prompt with context
     let systemPrompt = `You are ChatCDC, an advanced AI assistant. You are helpful, knowledgeable, and conversational.
 
@@ -30,12 +33,27 @@ Key behaviors:
 - Be concise but thorough
 - If you don't know something, admit it honestly`
 
+    // Add OCR/Vision instructions if images are present
+    if (hasImages) {
+      systemPrompt += `
+
+**VISION & OCR CAPABILITIES:**
+You have vision capabilities and can see images the user has attached. When processing images:
+1. ALWAYS perform OCR - read and extract ALL visible text from images
+2. Describe the visual content, layout, and any important details
+3. For documents/screenshots: transcribe the full text content
+4. For photos with text (signs, labels, receipts, etc.): read all text
+5. For diagrams/charts: describe the structure and any text/labels
+6. If the user asks about document content, provide the extracted text
+7. Be thorough - don't skip any visible text`
+    }
+
     // Add memory context if available
     if (memoryContext) {
       systemPrompt += `\n\n${memoryContext}`
     }
 
-    // Add file context if available
+    // Add file context if available (contains document text from PDFs, etc.)
     if (fileContext) {
       systemPrompt += `\n\n${fileContext}`
     }

@@ -1,23 +1,22 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
   MessageCircle, Plus, Trash2, Upload, Send, Settings, 
   PanelLeftClose, PanelLeft, Search, MoreHorizontal,
   Sparkles, Image, FileText, X, ChevronDown, Globe,
-  Brain, Keyboard, Moon, Sun, Zap
+  Brain, Keyboard, Moon, Sun, Zap, LogOut, User
 } from 'lucide-react'
 import { supabase } from '@/lib/supabaseClient'
+import { useAuth } from '@/contexts/AuthContext'
 import { MessageBubble } from '@/components/chat/MessageBubble'
 import { FilePreview } from '@/components/chat/FilePreview'
 import { PromptTemplates, parseSlashCommand, getPromptFromCommand } from '@/components/chat/PromptTemplates'
 import { SettingsPanel, type ChatSettings } from '@/components/chat/SettingsPanel'
 import { buildFileContext, createFilePreview, MAX_FILES_PER_MESSAGE } from '@/lib/fileProcessor'
 import { buildMemoryContext, parseRememberCommand } from '@/lib/memory'
-
-// Fixed UUID for anonymous users (consistent across sessions)
-const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
 
 interface MessageFile {
   id: string
@@ -72,6 +71,12 @@ function createInitialConversation(): Conversation {
 }
 
 export default function ChatPage() {
+  const { user, loading: authLoading, signOut } = useAuth()
+  const router = useRouter()
+  
+  // Get user ID (use user's ID if logged in)
+  const userId = user?.id || ''
+
   // Initialize with conversation immediately to fix send bug
   const [initialConversation] = useState<Conversation>(createInitialConversation)
   const [conversations, setConversations] = useState<Conversation[]>([initialConversation])
@@ -101,19 +106,27 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
+  // Handle logout
+  const handleLogout = async () => {
+    await signOut()
+    router.push('/login')
+  }
+
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Load conversations from Supabase
+  // Load conversations from Supabase when user changes
   useEffect(() => {
+    if (!userId) return
+    
     async function loadConversations() {
       try {
         const { data, error } = await supabase
           .from('conversations')
           .select('*')
-          .eq('user_id', ANONYMOUS_USER_ID)
+          .eq('user_id', userId)
           .order('updated_at', { ascending: false })
           .limit(50)
 
@@ -130,19 +143,16 @@ export default function ChatPage() {
             createdAt: new Date(c.created_at),
             updatedAt: new Date(c.updated_at)
           }))
-          setConversations(prev => {
-            // Merge with existing, keeping the initial conversation
-            const existing = new Set(loadedConvs.map(c => c.id))
-            const unique = prev.filter(c => !existing.has(c.id))
-            return [...loadedConvs, ...unique]
-          })
+          setConversations(loadedConvs)
+          // Select the first conversation
+          setCurrentConversationId(loadedConvs[0].id)
         }
       } catch (err) {
         console.warn('Error loading conversations:', err)
       }
     }
     loadConversations()
-  }, [])
+  }, [userId])
 
   // Load messages when switching conversations
   useEffect(() => {
@@ -177,14 +187,16 @@ export default function ChatPage() {
     loadMessages()
   }, [currentConversationId])
 
-  // Load user memories
+  // Load user memories when user changes
   useEffect(() => {
+    if (!userId) return
+    
     async function loadMemories() {
       try {
         const { data, error } = await supabase
           .from('user_memories')
           .select('*')
-          .eq('user_id', ANONYMOUS_USER_ID)
+          .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(20)
 
@@ -202,7 +214,7 @@ export default function ChatPage() {
       }
     }
     loadMemories()
-  }, [])
+  }, [userId])
 
   // Filter conversations by search
   const filteredConversations = useMemo(() => {
@@ -257,7 +269,7 @@ export default function ChatPage() {
       await supabase.from('conversations').insert({
         id: newConversation.id,
         title: newConversation.title,
-        user_id: ANONYMOUS_USER_ID,
+        user_id: userId,
         created_at: newConversation.createdAt.toISOString(),
         updated_at: newConversation.updatedAt.toISOString()
       })
@@ -397,7 +409,7 @@ export default function ChatPage() {
       try {
         await supabase.from('user_memories').insert({
           id: memoryId,
-          user_id: ANONYMOUS_USER_ID,
+          user_id: userId,
           content: rememberContent,
           created_at: new Date().toISOString()
         })
@@ -467,7 +479,7 @@ export default function ChatPage() {
       await supabase.from('messages').insert({
         id: userMessage.id,
         conversation_id: currentConversationId,
-        user_id: ANONYMOUS_USER_ID,
+        user_id: userId,
         role: 'user',
         content: finalContent,
         created_at: userMessage.created_at
@@ -483,7 +495,7 @@ export default function ChatPage() {
     setLoading(true)
     
     const memoryContext = buildMemoryContext(
-      memories.map(m => ({ ...m, user_id: ANONYMOUS_USER_ID })),
+      memories.map(m => ({ ...m, user_id: userId })),
       []
     )
 
@@ -507,7 +519,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           messages: messagesForAPI,
           conversationId: currentConversationId,
-          userId: ANONYMOUS_USER_ID,
+          userId: userId,
           settings: {
             ...settings,
             imageUrls: imageUrls.length > 0 ? imageUrls : undefined
@@ -778,13 +790,33 @@ export default function ChatPage() {
             </div>
 
             {/* Sidebar Footer */}
-            <div className="p-3 border-t border-zinc-800">
+            <div className="p-3 border-t border-zinc-800 space-y-2">
+              {/* User info */}
+              {user && (
+                <div className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <div className="w-8 h-8 bg-zinc-700 rounded-full flex items-center justify-center">
+                    <User className="w-4 h-4 text-zinc-300" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-zinc-200 truncate text-xs">{user.email}</p>
+                  </div>
+                </div>
+              )}
+              
               <button
                 onClick={() => setShowSettings(true)}
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
               >
                 <Settings className="w-4 h-4" />
                 Settings
+              </button>
+              
+              <button
+                onClick={handleLogout}
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-zinc-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
               </button>
             </div>
           </motion.div>
