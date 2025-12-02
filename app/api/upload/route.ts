@@ -3,12 +3,15 @@ import { supabase } from '@/lib/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
 import { isAllowedFileType, MAX_FILE_SIZE, MAX_FILES_PER_MESSAGE, formatFileSize } from '@/lib/fileProcessor'
 
+// Fixed UUID for anonymous users
+const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData()
     const files = formData.getAll('files') as File[]
     const conversationId = formData.get('conversationId') as string
-    const userId = formData.get('userId') as string || 'anonymous'
+    const userId = formData.get('userId') as string || ANONYMOUS_USER_ID
 
     if (!files || files.length === 0) {
       return NextResponse.json({ error: 'No files provided' }, { status: 400 })

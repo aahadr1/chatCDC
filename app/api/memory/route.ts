@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
 
+// Fixed UUID for anonymous users
+const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+
 // Get all memories for a user
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId') || 'anonymous'
+    const userId = searchParams.get('userId') || ANONYMOUS_USER_ID
 
     const { data: memories, error } = await supabase
       .from('user_memories')
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
 // Create a new memory
 export async function POST(request: NextRequest) {
   try {
-    const { content, userId = 'anonymous' } = await request.json()
+    const { content, userId = ANONYMOUS_USER_ID } = await request.json()
 
     if (!content || typeof content !== 'string') {
       return NextResponse.json({ error: 'Content is required' }, { status: 400 })
@@ -40,7 +43,7 @@ export async function POST(request: NextRequest) {
       .from('user_memories')
       .insert({
         id: uuidv4(),
-        user_id: userId,
+        user_id: userId || ANONYMOUS_USER_ID,
         content: content.trim(),
         created_at: new Date().toISOString(),
       })
@@ -86,4 +89,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

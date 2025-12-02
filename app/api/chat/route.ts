@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { streamGPT5, ChatMessage } from '@/lib/replicate'
 import { supabase } from '@/lib/supabaseClient'
 
+// Fixed UUID for anonymous users
+const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+
 export async function POST(request: NextRequest) {
   try {
     const { 
       messages, 
       conversationId, 
-      userId = 'anonymous',
+      userId = ANONYMOUS_USER_ID,
       settings = {},
       fileContext = '',
       memoryContext = ''
@@ -63,31 +66,35 @@ Key behaviors:
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
           }
 
-          // Save assistant message to database
+          // Save assistant message to database (wrapped in try-catch)
           if (conversationId) {
-            await supabase.from('messages').insert({
-              conversation_id: conversationId,
-              user_id: userId,
-              role: 'assistant',
-              content: fullResponse,
-              created_at: new Date().toISOString()
-            })
+            try {
+              await supabase.from('messages').insert({
+                conversation_id: conversationId,
+                user_id: userId || ANONYMOUS_USER_ID,
+                role: 'assistant',
+                content: fullResponse,
+                created_at: new Date().toISOString()
+              })
 
-            // Update conversation title if this is the first response
-            const { data: conv } = await supabase
-              .from('conversations')
-              .select('title')
-              .eq('id', conversationId)
-              .single()
-
-            if (conv?.title === 'New Chat' && messages.length > 0) {
-              const firstUserMessage = messages.find((m: any) => m.role === 'user')?.content || ''
-              const newTitle = firstUserMessage.substring(0, 50) + (firstUserMessage.length > 50 ? '...' : '')
-              
-              await supabase
+              // Update conversation title if this is the first response
+              const { data: conv } = await supabase
                 .from('conversations')
-                .update({ title: newTitle, updated_at: new Date().toISOString() })
+                .select('title')
                 .eq('id', conversationId)
+                .single()
+
+              if (conv?.title === 'New Chat' && messages.length > 0) {
+                const firstUserMessage = messages.find((m: any) => m.role === 'user')?.content || ''
+                const newTitle = firstUserMessage.substring(0, 50) + (firstUserMessage.length > 50 ? '...' : '')
+                
+                await supabase
+                  .from('conversations')
+                  .update({ title: newTitle, updated_at: new Date().toISOString() })
+                  .eq('id', conversationId)
+              }
+            } catch (dbError) {
+              console.warn('Could not save to database:', dbError)
             }
           }
 

@@ -16,6 +16,9 @@ import { SettingsPanel, type ChatSettings } from '@/components/chat/SettingsPane
 import { buildFileContext, createFilePreview, MAX_FILES_PER_MESSAGE } from '@/lib/fileProcessor'
 import { buildMemoryContext, parseRememberCommand } from '@/lib/memory'
 
+// Fixed UUID for anonymous users (consistent across sessions)
+const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
+
 interface Message {
   id: string
   content: string
@@ -101,7 +104,7 @@ export default function ChatPage() {
         const { data, error } = await supabase
           .from('conversations')
           .select('*')
-          .eq('user_id', 'anonymous')
+          .eq('user_id', ANONYMOUS_USER_ID)
           .order('updated_at', { ascending: false })
           .limit(50)
 
@@ -172,7 +175,7 @@ export default function ChatPage() {
         const { data, error } = await supabase
           .from('user_memories')
           .select('*')
-          .eq('user_id', 'anonymous')
+          .eq('user_id', ANONYMOUS_USER_ID)
           .order('created_at', { ascending: false })
           .limit(20)
 
@@ -245,7 +248,7 @@ export default function ChatPage() {
       await supabase.from('conversations').insert({
         id: newConversation.id,
         title: newConversation.title,
-        user_id: 'anonymous',
+        user_id: ANONYMOUS_USER_ID,
         created_at: newConversation.createdAt.toISOString(),
         updated_at: newConversation.updatedAt.toISOString()
       })
@@ -385,7 +388,7 @@ export default function ChatPage() {
       try {
         await supabase.from('user_memories').insert({
           id: memoryId,
-          user_id: 'anonymous',
+          user_id: ANONYMOUS_USER_ID,
           content: rememberContent,
           created_at: new Date().toISOString()
         })
@@ -430,7 +433,7 @@ export default function ChatPage() {
       await supabase.from('messages').insert({
         id: userMessage.id,
         conversation_id: currentConversationId,
-        user_id: 'anonymous',
+        user_id: ANONYMOUS_USER_ID,
         role: 'user',
         content: finalContent,
         created_at: userMessage.created_at
@@ -455,7 +458,7 @@ export default function ChatPage() {
     })))
     
     const memoryContext = buildMemoryContext(
-      memories.map(m => ({ ...m, user_id: 'anonymous' })),
+      memories.map(m => ({ ...m, user_id: ANONYMOUS_USER_ID })),
       []
     )
 
@@ -471,7 +474,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           messages: newMessages,
           conversationId: currentConversationId,
-          userId: 'anonymous',
+          userId: ANONYMOUS_USER_ID,
           settings: {
             ...settings,
             imageUrls: imageUrls.length > 0 ? imageUrls : undefined
