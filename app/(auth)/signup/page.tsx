@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Mail, Lock, Zap, ArrowRight, AlertCircle, CheckCircle } from 'lucide-react'
+import { Mail, Lock, Zap, ArrowRight, AlertCircle } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 
 export default function SignupPage() {
@@ -12,7 +12,6 @@ export default function SignupPage() {
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
   const [loading, setLoading] = useState(false)
   const { signUp, user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -46,8 +45,8 @@ export default function SignupPage() {
       setError(error.message)
       setLoading(false)
     } else {
-      setSuccess(true)
-      setLoading(false)
+      // Redirect to chat after successful signup
+      window.location.href = '/chat'
     }
   }
 
@@ -56,33 +55,6 @@ export default function SignupPage() {
     return (
       <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-zinc-700 border-t-white rounded-full animate-spin" />
-      </div>
-    )
-  }
-
-  if (success) {
-    return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md text-center"
-        >
-          <div className="w-16 h-16 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CheckCircle className="w-8 h-8 text-emerald-400" />
-          </div>
-          <h1 className="text-2xl font-bold text-white mb-2">Check your email</h1>
-          <p className="text-zinc-400 mb-6">
-            We've sent a confirmation link to <span className="text-white">{email}</span>
-          </p>
-          <Link
-            href="/login"
-            className="inline-flex items-center gap-2 text-white hover:underline"
-          >
-            Back to login
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </motion.div>
       </div>
     )
   }
