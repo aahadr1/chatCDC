@@ -27,14 +27,23 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const { error } = await signIn(email, password)
-    
-    if (error) {
-      setError(error.message)
+    try {
+      console.log('Attempting sign in...')
+      const { error } = await signIn(email, password)
+      
+      if (error) {
+        console.error('Sign in error:', error)
+        setError(error.message)
+        setLoading(false)
+      } else {
+        console.log('Sign in successful, redirecting...')
+        // Use window.location for a hard redirect to ensure cookies are properly set
+        window.location.href = '/chat'
+      }
+    } catch (err) {
+      console.error('Unexpected error:', err)
+      setError('An unexpected error occurred. Please try again.')
       setLoading(false)
-    } else {
-      // Use window.location for a hard redirect to ensure cookies are properly set
-      window.location.href = '/chat'
     }
   }
 
