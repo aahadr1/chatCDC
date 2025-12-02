@@ -4,9 +4,16 @@ import { useState } from 'react'
 import { motion } from 'framer-motion'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Copy, Check, RefreshCw, Edit3, ThumbsUp, ThumbsDown, MoreHorizontal, User, Bot } from 'lucide-react'
-import { Dropdown, DropdownItem, DropdownDivider } from '@/components/ui/Dropdown'
+import { Copy, Check, RefreshCw, Edit3, ThumbsUp, ThumbsDown, User, Bot, FileText, Image as ImageIcon, File } from 'lucide-react'
 import { CodeBlock } from './CodeBlock'
+
+interface MessageFile {
+  id: string
+  file_name: string
+  file_url: string
+  file_type: string
+  preview?: string
+}
 
 interface Message {
   id: string
@@ -14,6 +21,7 @@ interface Message {
   role: 'user' | 'assistant'
   created_at: string
   feedback?: 'up' | 'down' | null
+  files?: MessageFile[]
 }
 
 interface MessageBubbleProps {
@@ -35,12 +43,19 @@ export function MessageBubble({
 }: MessageBubbleProps) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
+  const hasFiles = message.files && message.files.length > 0
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
     onCopy?.()
+  }
+
+  const getFileIcon = (type: string) => {
+    if (type.startsWith('image/')) return ImageIcon
+    if (type === 'application/pdf') return FileText
+    return File
   }
 
   return (
@@ -63,6 +78,51 @@ export function MessageBubble({
 
       {/* Message Content */}
       <div className={`flex-1 max-w-[85%] ${isUser ? 'flex flex-col items-end' : ''}`}>
+        {/* Attached Files (shown above message for user) */}
+        {isUser && hasFiles && (
+          <div className="mb-2 flex flex-wrap gap-2 justify-end">
+            {message.files!.map((file) => {
+              const Icon = getFileIcon(file.file_type)
+              const isImage = file.file_type.startsWith('image/')
+              
+              return (
+                <div
+                  key={file.id}
+                  className="relative group/file"
+                >
+                  {isImage && file.preview ? (
+                    <a 
+                      href={file.file_url} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="block"
+                    >
+                      <img 
+                        src={file.preview} 
+                        alt={file.file_name}
+                        className="w-32 h-32 object-cover rounded-lg border border-zinc-700 hover:border-zinc-500 transition-colors"
+                      />
+                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 rounded-b-lg truncate">
+                        {file.file_name}
+                      </div>
+                    </a>
+                  ) : (
+                    <a
+                      href={file.file_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg hover:border-zinc-500 transition-colors"
+                    >
+                      <Icon className="w-4 h-4 text-zinc-400" />
+                      <span className="text-xs text-zinc-300 max-w-24 truncate">{file.file_name}</span>
+                    </a>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
+
         <div className={`${isUser ? 'message-user' : 'message-assistant'} px-4 py-3`}>
           {isUser ? (
             <p className="whitespace-pre-wrap text-sm">{message.content}</p>
@@ -172,4 +232,3 @@ export function MessageBubble({
     </motion.div>
   )
 }
-

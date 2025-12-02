@@ -184,22 +184,42 @@ export function createFilePreview(file: File): Promise<string | null> {
 export function buildFileContext(files: ProcessedFile[]): string {
   if (files.length === 0) return ''
 
-  let context = '\n## Attached Files\n'
+  const textFiles = files.filter(f => !f.file_type.startsWith('image/'))
+  const imageFiles = files.filter(f => f.file_type.startsWith('image/'))
   
-  files.forEach((file, i) => {
-    context += `\n### File ${i + 1}: ${file.file_name}\n`
-    context += `- Type: ${file.file_type}\n`
-    context += `- Size: ${formatFileSize(file.file_size)}\n`
+  let context = '\n---\n## USER ATTACHED FILES\n'
+  context += 'The user has attached the following files to their message. Please analyze and respond based on these files:\n'
+  
+  // Handle text/document files
+  textFiles.forEach((file, i) => {
+    context += `\n### Document ${i + 1}: "${file.file_name}"\n`
+    context += `Type: ${file.file_type} | Size: ${formatFileSize(file.file_size)}\n`
     
     if (file.content) {
-      context += `\nContent:\n\`\`\`\n${file.content.substring(0, 5000)}\n\`\`\`\n`
+      const truncatedContent = file.content.length > 10000 
+        ? file.content.substring(0, 10000) + '\n\n[... content truncated for length ...]'
+        : file.content
+      context += `\n**File Contents:**\n\`\`\`\n${truncatedContent}\n\`\`\`\n`
+    } else {
+      context += `\n(File content could not be extracted - this may be a binary file like PDF)\n`
     }
     
     if (file.summary) {
-      context += `\nSummary: ${file.summary}\n`
+      context += `\n**Summary:** ${file.summary}\n`
     }
   })
-
+  
+  // Handle image files
+  if (imageFiles.length > 0) {
+    context += `\n### Images Attached (${imageFiles.length}):\n`
+    imageFiles.forEach((file, i) => {
+      context += `- Image ${i + 1}: "${file.file_name}" (${file.file_type})\n`
+    })
+    context += `\nNote: These images have been sent to the vision model for analysis. Please describe what you see in the images if relevant to the user's question.\n`
+  }
+  
+  context += '\n---\n'
+  
   return context
 }
 

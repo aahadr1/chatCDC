@@ -19,12 +19,21 @@ import { buildMemoryContext, parseRememberCommand } from '@/lib/memory'
 // Fixed UUID for anonymous users (consistent across sessions)
 const ANONYMOUS_USER_ID = '00000000-0000-0000-0000-000000000000'
 
+interface MessageFile {
+  id: string
+  file_name: string
+  file_url: string
+  file_type: string
+  preview?: string
+}
+
 interface Message {
   id: string
   content: string
   role: 'user' | 'assistant'
   created_at: string
   feedback?: 'up' | 'down' | null
+  files?: MessageFile[]
 }
 
 interface Conversation {
@@ -421,11 +430,36 @@ export default function ChatPage() {
       }
     }
 
+    // Capture current files to attach to message
+    const messageFiles: MessageFile[] = uploadedFiles.map(f => ({
+      id: f.id,
+      file_name: f.file_name,
+      file_url: f.file_url,
+      file_type: f.file_type,
+      preview: f.preview
+    }))
+
+    // Build file context to append to message content for AI
+    const fileContext = buildFileContext(uploadedFiles.map(f => ({
+      id: f.id,
+      file_name: f.file_name,
+      file_url: f.file_url,
+      file_size: f.file_size,
+      file_type: f.file_type,
+      content: f.content
+    })))
+
+    // Build the actual content sent to AI (includes file context)
+    const contentForAI = fileContext 
+      ? `${finalContent}\n\n${fileContext}`
+      : finalContent
+
     const userMessage: Message = {
       id: crypto.randomUUID(),
-      content: finalContent,
+      content: finalContent, // Display content (without file dump)
       role: 'user',
-      created_at: new Date().toISOString()
+      created_at: new Date().toISOString(),
+      files: messageFiles.length > 0 ? messageFiles : undefined
     }
 
     // Try to save user message to database
@@ -445,41 +479,39 @@ export default function ChatPage() {
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
     setInputMessage('')
+    setUploadedFiles([]) // Clear files after attaching to message
     setLoading(true)
-
-    // Build contexts
-    const fileContext = buildFileContext(uploadedFiles.map(f => ({
-      id: f.id,
-      file_name: f.file_name,
-      file_url: f.file_url,
-      file_size: f.file_size,
-      file_type: f.file_type,
-      content: f.content
-    })))
     
     const memoryContext = buildMemoryContext(
       memories.map(m => ({ ...m, user_id: ANONYMOUS_USER_ID })),
       []
     )
 
-    // Get image URLs for vision
-    const imageUrls = uploadedFiles
+    // Get image URLs for vision (from the files we just attached)
+    const imageUrls = messageFiles
       .filter(f => f.file_type.startsWith('image/'))
       .map(f => f.file_url)
+
+    // Build messages array for API with file context included in user message
+    const messagesForAPI = newMessages.map(m => {
+      if (m.id === userMessage.id && fileContext) {
+        return { ...m, content: contentForAI }
+      }
+      return m
+    })
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: newMessages,
+          messages: messagesForAPI,
           conversationId: currentConversationId,
           userId: ANONYMOUS_USER_ID,
           settings: {
             ...settings,
             imageUrls: imageUrls.length > 0 ? imageUrls : undefined
           },
-          fileContext,
           memoryContext
         }),
       })
