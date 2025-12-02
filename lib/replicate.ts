@@ -4,6 +4,9 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN!,
 })
 
+// Type for Replicate model identifiers
+type ReplicateModelId = `${string}/${string}` | `${string}/${string}:${string}`
+
 export interface ChatMessage {
   role: 'user' | 'assistant' | 'system'
   content: string
@@ -29,6 +32,12 @@ export interface GPT5StreamOptions {
   
   /** Optional image inputs for multimodal tasks */
   image_input?: string[]
+}
+
+interface ModelConfig {
+  name: ReplicateModelId
+  input: Record<string, unknown>
+  description: string
 }
 
 export async function* streamGPT5(
@@ -71,14 +80,14 @@ export async function* streamGPT5(
   console.log('GPT-5 Input Configuration:', JSON.stringify(input, null, 2))
 
   // Model priority list with fallback strategies
-  const modelFallbackList = [
+  const modelFallbackList: ModelConfig[] = [
     { 
-      name: "openai/gpt-5", 
+      name: "openai/gpt-4o" as ReplicateModelId, 
       input: input,
-      description: "Primary GPT-5 model for advanced reasoning"
+      description: "Primary GPT-4o model for advanced reasoning"
     },
     { 
-      name: "meta/llama-2-70b-chat", 
+      name: "meta/llama-2-70b-chat" as ReplicateModelId, 
       input: { 
         prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
         max_new_tokens: 1000
@@ -86,7 +95,7 @@ export async function* streamGPT5(
       description: "Fallback model for general conversation"
     },
     { 
-      name: "mistralai/mistral-7b-instruct-v0.1", 
+      name: "mistralai/mistral-7b-instruct-v0.1" as ReplicateModelId, 
       input: { 
         prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
         max_new_tokens: 800
@@ -107,7 +116,7 @@ export async function* streamGPT5(
         if (typeof event === 'string') {
           yield event
         } else if (event && typeof event === 'object' && 'content' in event) {
-          yield event.content as string
+          yield (event as { content: string }).content
         }
       }
       
