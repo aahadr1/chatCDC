@@ -2,8 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabaseClient'
 import { v4 as uuidv4 } from 'uuid'
 import { isAllowedFileType, MAX_FILE_SIZE, MAX_FILES_PER_MESSAGE, formatFileSize } from '@/lib/fileProcessor'
-// @ts-ignore - pdf-parse types
-import pdfParse from 'pdf-parse'
+
+// Dynamic import for pdf-parse to avoid build issues
+async function parsePDF(buffer: Buffer): Promise<string> {
+  try {
+    // Dynamic import to avoid build-time file access
+    const pdfParse = (await import('pdf-parse/lib/pdf-parse.js')).default
+    const data = await pdfParse(buffer)
+    return data.text
+  } catch (error) {
+    console.error('PDF parsing error:', error)
+    return '[PDF text extraction failed - document may contain scanned images]'
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -75,17 +86,10 @@ export async function POST(request: NextRequest) {
           content = await file.text()
         }
         
-        // PDF files - extract text using pdf-parse
+        // PDF files - extract text
         if (file.type === 'application/pdf') {
-          try {
-            const pdfData = await pdfParse(buffer)
-            content = pdfData.text
-            console.log(`Extracted ${content.length} characters from PDF: ${file.name}`)
-          } catch (pdfError) {
-            console.error('PDF parsing error:', pdfError)
-            // PDF might be image-based, we'll note this
-            content = '[PDF contains scanned images - OCR will be performed by vision model]'
-          }
+          content = await parsePDF(buffer)
+          console.log(`Extracted ${content.length} characters from PDF: ${file.name}`)
         }
 
         // Save file metadata to database
