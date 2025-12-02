@@ -1,109 +1,252 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  * {
+    @apply border-zinc-800;
+  }
+  
   html {
-    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Geist', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
   
   body {
-    @apply bg-white text-apple-gray-900 antialiased;
+    @apply bg-zinc-950 text-zinc-100 antialiased;
+  }
+
+  /* Custom selection */
+  ::selection {
+    @apply bg-zinc-700 text-white;
   }
 }
 
 @layer components {
-  .glass-effect {
-    @apply bg-white/80 backdrop-blur-xl border border-white/20;
+  /* Glass morphism effect */
+  .glass {
+    @apply bg-zinc-900/80 backdrop-blur-xl border border-zinc-800/50;
+  }
+
+  .glass-light {
+    @apply bg-zinc-800/50 backdrop-blur-md border border-zinc-700/30;
   }
   
-  .message-bubble {
-    @apply max-w-[85%] px-4 py-3 rounded-2xl shadow-sm;
+  /* Message bubbles */
+  .message-user {
+    @apply bg-white text-zinc-900 rounded-2xl rounded-br-md;
   }
   
-  .user-message {
-    @apply bg-apple-blue-500 text-white ml-auto;
+  .message-assistant {
+    @apply bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-2xl rounded-bl-md;
   }
   
-  .assistant-message {
-    @apply bg-apple-gray-100 text-apple-gray-900 mr-auto;
+  /* Input styling */
+  .input-base {
+    @apply w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-3 
+           text-zinc-100 placeholder:text-zinc-500
+           focus:outline-none focus:ring-1 focus:ring-zinc-700 focus:border-zinc-700
+           transition-all duration-200;
+  }
+
+  .input-ghost {
+    @apply w-full bg-transparent border-none px-4 py-3 
+           text-zinc-100 placeholder:text-zinc-500
+           focus:outline-none focus:ring-0
+           transition-all duration-200;
   }
   
-  .input-field {
-    @apply w-full px-4 py-3 border border-apple-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-apple-blue-500 focus:border-transparent transition-all duration-200;
+  /* Button variants */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 
+           px-4 py-2 rounded-lg font-medium text-sm
+           transition-all duration-200 
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
-  
+
   .btn-primary {
-    @apply bg-apple-blue-500 hover:bg-apple-blue-600 text-white px-4 py-2 rounded-xl font-medium transition-all duration-200 shadow-sm hover:shadow-md;
+    @apply btn bg-white text-zinc-900 
+           hover:bg-zinc-200 active:bg-zinc-300;
   }
-  
+
   .btn-secondary {
-    @apply bg-apple-gray-100 hover:bg-apple-gray-200 text-apple-gray-700 px-4 py-2 rounded-xl font-medium transition-all duration-200;
+    @apply btn bg-zinc-800 text-zinc-100 border border-zinc-700
+           hover:bg-zinc-700 active:bg-zinc-600;
+  }
+
+  .btn-ghost {
+    @apply btn bg-transparent text-zinc-400
+           hover:text-zinc-100 hover:bg-zinc-800;
+  }
+
+  .btn-icon {
+    @apply p-2 rounded-lg text-zinc-400
+           hover:text-zinc-100 hover:bg-zinc-800
+           transition-all duration-200
+           disabled:opacity-50 disabled:cursor-not-allowed;
   }
   
+  /* Sidebar styling */
   .sidebar-item {
-    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-apple-gray-700 hover:bg-apple-gray-100 transition-all duration-200 cursor-pointer;
+    @apply flex items-center gap-3 px-3 py-2.5 rounded-lg 
+           text-zinc-400 text-sm
+           hover:text-zinc-100 hover:bg-zinc-800/50
+           transition-all duration-200 cursor-pointer;
   }
   
   .sidebar-item.active {
-    @apply bg-apple-blue-500 text-white hover:bg-apple-blue-600;
+    @apply bg-zinc-800 text-white;
+  }
+
+  /* Card styling */
+  .card {
+    @apply bg-zinc-900 border border-zinc-800 rounded-xl;
+  }
+
+  .card-hover {
+    @apply card hover:border-zinc-700 hover:bg-zinc-800/50 transition-all duration-200;
+  }
+
+  /* Badge styling */
+  .badge {
+    @apply inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium;
+  }
+
+  .badge-default {
+    @apply badge bg-zinc-800 text-zinc-300;
+  }
+
+  .badge-success {
+    @apply badge bg-emerald-900/50 text-emerald-400 border border-emerald-800/50;
+  }
+
+  /* Tooltip */
+  .tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs bg-zinc-800 text-zinc-200 
+           rounded-md shadow-lg border border-zinc-700
+           animate-fade-in pointer-events-none;
+  }
+
+  /* Code block styling */
+  .code-block {
+    @apply bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden;
+  }
+
+  .code-header {
+    @apply flex items-center justify-between px-4 py-2 
+           bg-zinc-800/50 border-b border-zinc-800 text-xs text-zinc-400;
+  }
+
+  /* Prose styling for markdown */
+  .prose-chat {
+    @apply prose prose-invert prose-sm max-w-none
+           prose-p:text-zinc-300 prose-p:leading-relaxed
+           prose-headings:text-zinc-100 prose-headings:font-semibold
+           prose-a:text-zinc-100 prose-a:underline prose-a:underline-offset-2
+           prose-strong:text-zinc-100
+           prose-code:text-zinc-200 prose-code:bg-zinc-800 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:text-sm prose-code:before:content-none prose-code:after:content-none
+           prose-pre:bg-zinc-900 prose-pre:border prose-pre:border-zinc-800
+           prose-ul:text-zinc-300 prose-ol:text-zinc-300
+           prose-li:marker:text-zinc-500
+           prose-blockquote:border-zinc-700 prose-blockquote:text-zinc-400
+           prose-hr:border-zinc-800;
   }
 }
 
-/* Custom scrollbar */
-.scrollbar-hide {
+/* Custom scrollbar - minimal */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(63, 63, 70, 0.5) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(63, 63, 70, 0.5);
+  border-radius: 3px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(63, 63, 70, 0.8);
+}
+
+/* Hide scrollbar */
+.scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-.scrollbar-hide::-webkit-scrollbar {
+.scrollbar-none::-webkit-scrollbar {
   display: none;
 }
 
-.custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
+/* Typing indicator animation */
+@keyframes typing-dot {
+  0%, 20% { 
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  50% { 
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+  80%, 100% { 
+    transform: translateY(0);
+    opacity: 0.4;
+  }
 }
 
-.custom-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
+.typing-dot {
+  @apply w-1.5 h-1.5 bg-zinc-400 rounded-full;
+  animation: typing-dot 1.4s infinite ease-in-out;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 3px;
+.typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-dot:nth-child(3) { animation-delay: 0s; }
+
+/* File upload drag state */
+.drag-active {
+  @apply border-zinc-500 bg-zinc-800/50;
 }
 
-.custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.3);
+/* Shimmer loading effect */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
-/* Typing animation */
-@keyframes typing {
-  0%, 20% { opacity: 0.4; }
-  50% { opacity: 1; }
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(39, 39, 42, 0) 0%,
+    rgba(63, 63, 70, 0.3) 50%,
+    rgba(39, 39, 42, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
 }
 
-.typing-indicator {
-  display: flex;
-  gap: 4px;
+/* Focus ring */
+.focus-ring {
+  @apply focus:outline-none focus:ring-2 focus:ring-zinc-700 focus:ring-offset-2 focus:ring-offset-zinc-950;
 }
 
-.typing-indicator span {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: #6b7280;
-  animation: typing 1.4s infinite ease-in-out;
+/* Transition groups */
+.transition-base {
+  @apply transition-all duration-200 ease-out;
 }
 
-.typing-indicator span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.typing-indicator span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-.typing-indicator span:nth-child(3) {
-  animation-delay: 0.4s;
+.transition-slow {
+  @apply transition-all duration-300 ease-out;
 }

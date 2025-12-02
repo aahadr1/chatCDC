@@ -1,26 +1,27 @@
 import type { Metadata } from 'next'
-import type { ReactNode } from 'react'
 import './globals.css'
+import { ToastProvider } from '@/components/ui/Toast'
 
 export const metadata: Metadata = {
   title: 'ChatCDC - AI Assistant',
-  description: 'A modern, luxurious AI chat interface powered by GPT-5',
-}
-
-export const viewport = {
-  width: 'device-width',
-  initialScale: 1,
+  description: 'Advanced AI chat assistant with file processing, memory, and more',
 }
 
 export default function RootLayout({
   children,
 }: {
-  children: ReactNode
+  children: React.ReactNode
 }) {
   return (
-    <html lang="en">
-      <body className="font-sf">
-        {children}
+    <html lang="en" className="dark">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+      </head>
+      <body className="bg-zinc-950 text-zinc-100 antialiased">
+        <ToastProvider>
+          {children}
+        </ToastProvider>
       </body>
     </html>
   )

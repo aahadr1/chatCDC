@@ -1,15 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { streamGPT5, ChatMessage } from '@/lib/replicate'
+import { supabase } from '@/lib/supabaseClient'
 
 export async function POST(request: NextRequest) {
   try {
-    const { messages, conversationId, userId = 'anonymous' } = await request.json()
-
-    console.log('API received messages:', messages)
-    console.log('Last message content:', messages[messages.length - 1]?.content)
+    const { 
+      messages, 
+      conversationId, 
+      userId = 'anonymous',
+      settings = {},
+      fileContext = '',
+      memoryContext = ''
+    } = await request.json()
 
     if (!messages || !Array.isArray(messages)) {
       return NextResponse.json({ error: 'Messages array is required' }, { status: 400 })
+    }
+
+    // Build enhanced system prompt with context
+    let systemPrompt = `You are ChatCDC, an advanced AI assistant. You are helpful, knowledgeable, and conversational.
+
+Key behaviors:
+- Provide clear, accurate, and helpful responses
+- Use markdown formatting for better readability
+- Format code blocks with language tags
+- Be concise but thorough
+- If you don't know something, admit it honestly`
+
+    // Add memory context if available
+    if (memoryContext) {
+      systemPrompt += `\n\n${memoryContext}`
+    }
+
+    // Add file context if available
+    if (fileContext) {
+      systemPrompt += `\n\n${fileContext}`
     }
 
     // Convert messages to the format expected by GPT-5
@@ -18,47 +43,66 @@ export async function POST(request: NextRequest) {
       content: msg.content
     }))
 
-    console.log('Converted chat messages:', chatMessages)
-
-    // Create a streaming response with advanced configuration
+    // Create a streaming response
     const encoder = new TextEncoder()
     const stream = new ReadableStream({
       async start(controller) {
         try {
           let fullResponse = ''
           
-          // Advanced GPT-5 configuration with reasoning and verbosity controls
+          // Stream from GPT-5
           for await (const chunk of streamGPT5(chatMessages, {
-            verbosity: 'medium',
-            reasoning_effort: 'medium',
-            max_completion_tokens: 4000,
-            system_prompt: 
-              'You are an advanced AI assistant in a chat application. ' +
-              'Provide clear, concise, and helpful responses. ' +
-              'Adapt your communication style to the user\'s needs.'
+            verbosity: settings.verbosity || 'medium',
+            reasoning_effort: settings.reasoningEffort || 'medium',
+            max_completion_tokens: settings.maxTokens || 4000,
+            system_prompt: systemPrompt,
+            // Add image inputs if any images were uploaded
+            ...(settings.imageUrls && { image_input: settings.imageUrls })
           })) {
             fullResponse += chunk
             controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
           }
 
-          // Final message indicating stream completion
+          // Save assistant message to database
+          if (conversationId) {
+            await supabase.from('messages').insert({
+              conversation_id: conversationId,
+              user_id: userId,
+              role: 'assistant',
+              content: fullResponse,
+              created_at: new Date().toISOString()
+            })
+
+            // Update conversation title if this is the first response
+            const { data: conv } = await supabase
+              .from('conversations')
+              .select('title')
+              .eq('id', conversationId)
+              .single()
+
+            if (conv?.title === 'New Chat' && messages.length > 0) {
+              const firstUserMessage = messages.find((m: any) => m.role === 'user')?.content || ''
+              const newTitle = firstUserMessage.substring(0, 50) + (firstUserMessage.length > 50 ? '...' : '')
+              
+              await supabase
+                .from('conversations')
+                .update({ title: newTitle, updated_at: new Date().toISOString() })
+                .eq('id', conversationId)
+            }
+          }
+
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ done: true })}\n\n`))
           controller.close()
         } catch (error) {
           console.error('Streaming error:', error)
           
-          // Detailed error response
           const errorMessage = error instanceof Error 
             ? error.message 
-            : 'An unexpected error occurred during AI response generation'
+            : 'An unexpected error occurred'
           
           controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
             error: errorMessage,
-            details: error instanceof Error ? {
-              name: error.name,
-              message: error.message,
-              stack: error.stack
-            } : null
+            content: 'I apologize, but I encountered an error processing your request. Please try again.'
           })}\n\n`))
           
           controller.close()
@@ -76,14 +120,9 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Chat API error:', error)
     
-    // Comprehensive error handling
     return NextResponse.json({ 
       error: 'Internal server error',
-      details: error instanceof Error ? {
-        name: error.name,
-        message: error.message,
-        stack: error.stack
-      } : null
+      message: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 })
   }
 }
