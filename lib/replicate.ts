@@ -18,13 +18,13 @@ export interface GPT5Response {
 }
 
 export interface GPT5StreamOptions {
-  /** Control model's reasoning depth */
+  /** Control model's reasoning depth - minimal, low, medium, high */
   reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'
   
-  /** Control response verbosity */
+  /** Control response verbosity - low, medium, high */
   verbosity?: 'low' | 'medium' | 'high'
   
-  /** Maximum tokens for response generation */
+  /** Maximum number of completion tokens to generate */
   max_completion_tokens?: number
   
   /** Custom system prompt to guide model behavior */
@@ -44,94 +44,102 @@ export async function* streamGPT5(
   messages: ChatMessage[],
   options: GPT5StreamOptions = {}
 ): AsyncGenerator<string, void, unknown> {
-  // Logging and telemetry
   console.log('GPT-5 Stream Initiated', {
     messageCount: messages.length,
     apiTokenAvailable: !!process.env.REPLICATE_API_TOKEN
   })
 
-  // Validate and prepare input
+  // Format messages for the API
   const formattedMessages = messages.map(msg => ({
     role: msg.role,
     content: msg.content
   }))
 
-  // Advanced configuration with best practices
-  const input = {
-    messages: formattedMessages,
-    
-    // Reasoning controls
-    reasoning_effort: options.reasoning_effort || 'medium',
-    verbosity: options.verbosity || 'medium',
-    
-    // Performance and cost optimization
-    max_completion_tokens: options.max_completion_tokens || 4000,
-    
-    // Enhanced system prompt with role clarity
-    system_prompt: options.system_prompt || 
-      'You are an advanced AI assistant designed to provide helpful, accurate, and context-aware responses. ' +
-      'Break down complex tasks, think step-by-step, and prioritize clarity and precision.',
-    
-    // Optional multimodal support
-    ...(options.image_input && { image_input: options.image_input })
-  }
+  // Build prompt from messages if needed (for models that use prompt instead of messages)
+  const promptFromMessages = formattedMessages
+    .map(m => `${m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : 'System'}: ${m.content}`)
+    .join('\n\n') + '\n\nAssistant:'
 
-  // Logging input for debugging
-  console.log('GPT-5 Input Configuration:', JSON.stringify(input, null, 2))
+  // Get the last user message for simple prompt
+  const lastUserMessage = [...messages].reverse().find(m => m.role === 'user')?.content || ''
 
-  // Model priority list with fallback strategies
+  // Model configurations following Replicate's GPT-5 and GPT-4o-mini specs
   const modelFallbackList: ModelConfig[] = [
     { 
-      name: "openai/gpt-4o" as ReplicateModelId, 
-      input: input,
-      description: "Primary GPT-4o model for advanced reasoning"
+      // Primary: GPT-5 - OpenAI's most capable model
+      name: "openai/gpt-5" as ReplicateModelId, 
+      input: {
+        messages: formattedMessages,
+        system_prompt: options.system_prompt || 'You are ChatCDC, an advanced AI assistant. Provide clear, helpful, and accurate responses. Use markdown formatting when appropriate.',
+        reasoning_effort: options.reasoning_effort || 'medium',
+        verbosity: options.verbosity || 'medium',
+        max_completion_tokens: options.max_completion_tokens || 4096,
+        image_input: options.image_input || [],
+      },
+      description: "GPT-5 - OpenAI's most capable model for advanced reasoning"
     },
     { 
-      name: "meta/llama-2-70b-chat" as ReplicateModelId, 
-      input: { 
-        prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
-        max_new_tokens: 1000
+      // Fallback: GPT-4o-mini - Fast and cost-effective
+      name: "openai/gpt-4o-mini" as ReplicateModelId, 
+      input: {
+        messages: formattedMessages,
+        system_prompt: options.system_prompt || 'You are ChatCDC, an advanced AI assistant. Provide clear, helpful, and accurate responses. Use markdown formatting when appropriate.',
+        max_completion_tokens: options.max_completion_tokens || 4096,
+        temperature: 0.7,
+        top_p: 1,
+        image_input: options.image_input || [],
       },
-      description: "Fallback model for general conversation"
+      description: "GPT-4o-mini - Fast, low-latency OpenAI model"
     },
     { 
-      name: "mistralai/mistral-7b-instruct-v0.1" as ReplicateModelId, 
+      // Secondary fallback: Meta Llama
+      name: "meta/meta-llama-3-70b-instruct" as ReplicateModelId, 
       input: { 
-        prompt: formattedMessages.map(m => `${m.role}: ${m.content}`).join('\n'),
-        max_new_tokens: 800
+        prompt: promptFromMessages,
+        system_prompt: options.system_prompt || 'You are ChatCDC, an advanced AI assistant.',
+        max_tokens: Math.min(options.max_completion_tokens || 2048, 2048),
+        temperature: 0.7,
       },
-      description: "Lightweight fallback model"
-    }
+      description: "Llama 3 70B - Meta's powerful open model"
+    },
   ]
 
   // Attempt models with comprehensive error handling
   for (const model of modelFallbackList) {
     try {
       console.log(`Attempting model: ${model.name} - ${model.description}`)
+      console.log('Input:', JSON.stringify(model.input, null, 2))
       
       const stream = replicate.stream(model.name, { input: model.input })
+      let hasYielded = false
       
       for await (const event of stream) {
-        // Robust event parsing
+        // Handle different event types from Replicate
         if (typeof event === 'string') {
+          hasYielded = true
           yield event
-        } else if (event && typeof event === 'object' && 'content' in event) {
-          yield (event as { content: string }).content
+        } else if (event && typeof event === 'object') {
+          if ('data' in event && typeof event.data === 'string') {
+            hasYielded = true
+            yield event.data
+          } else if ('content' in event && typeof event.content === 'string') {
+            hasYielded = true
+            yield event.content
+          }
         }
       }
       
-      // Successful model usage
-      console.log(`Successfully used model: ${model.name}`)
-      return
+      if (hasYielded) {
+        console.log(`Successfully used model: ${model.name}`)
+        return
+      }
     } catch (modelError) {
       console.error(`Model ${model.name} failed:`, modelError)
       
-      // Detailed error logging
       if (modelError instanceof Error) {
         console.error('Error details:', {
           name: modelError.name,
           message: modelError.message,
-          stack: modelError.stack
         })
       }
       
@@ -140,8 +148,8 @@ export async function* streamGPT5(
     }
   }
 
-  // Comprehensive fallback if all models fail
-  throw new Error('All AI models failed. Please check your configuration and API access.')
+  // If all models fail, yield an error message
+  yield "I apologize, but I'm currently experiencing technical difficulties. Please try again in a moment."
 }
 
 export default replicate

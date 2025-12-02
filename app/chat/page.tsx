@@ -97,27 +97,36 @@ export default function ChatPage() {
   // Load conversations from Supabase
   useEffect(() => {
     async function loadConversations() {
-      const { data } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('user_id', 'anonymous')
-        .order('updated_at', { ascending: false })
-        .limit(50)
+      try {
+        const { data, error } = await supabase
+          .from('conversations')
+          .select('*')
+          .eq('user_id', 'anonymous')
+          .order('updated_at', { ascending: false })
+          .limit(50)
 
-      if (data && data.length > 0) {
-        const loadedConvs = data.map(c => ({
-          id: c.id,
-          title: c.title,
-          messages: [],
-          createdAt: new Date(c.created_at),
-          updatedAt: new Date(c.updated_at)
-        }))
-        setConversations(prev => {
-          // Merge with existing, keeping the initial conversation
-          const existing = new Set(loadedConvs.map(c => c.id))
-          const unique = prev.filter(c => !existing.has(c.id))
-          return [...loadedConvs, ...unique]
-        })
+        if (error) {
+          console.warn('Could not load conversations:', error.message)
+          return
+        }
+
+        if (data && data.length > 0) {
+          const loadedConvs = data.map(c => ({
+            id: c.id,
+            title: c.title,
+            messages: [],
+            createdAt: new Date(c.created_at),
+            updatedAt: new Date(c.updated_at)
+          }))
+          setConversations(prev => {
+            // Merge with existing, keeping the initial conversation
+            const existing = new Set(loadedConvs.map(c => c.id))
+            const unique = prev.filter(c => !existing.has(c.id))
+            return [...loadedConvs, ...unique]
+          })
+        }
+      } catch (err) {
+        console.warn('Error loading conversations:', err)
       }
     }
     loadConversations()
@@ -128,20 +137,29 @@ export default function ChatPage() {
     async function loadMessages() {
       if (!currentConversationId) return
       
-      const { data } = await supabase
-        .from('messages')
-        .select('*')
-        .eq('conversation_id', currentConversationId)
-        .order('created_at', { ascending: true })
+      try {
+        const { data, error } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', currentConversationId)
+          .order('created_at', { ascending: true })
 
-      if (data) {
-        setMessages(data.map(m => ({
-          id: m.id,
-          content: m.content,
-          role: m.role,
-          created_at: m.created_at,
-          feedback: m.feedback
-        })))
+        if (error) {
+          console.warn('Could not load messages:', error.message)
+          return
+        }
+
+        if (data) {
+          setMessages(data.map(m => ({
+            id: m.id,
+            content: m.content,
+            role: m.role,
+            created_at: m.created_at,
+            feedback: m.feedback
+          })))
+        }
+      } catch (err) {
+        console.warn('Error loading messages:', err)
       }
     }
     loadMessages()
@@ -150,15 +168,25 @@ export default function ChatPage() {
   // Load user memories
   useEffect(() => {
     async function loadMemories() {
-      const { data } = await supabase
-        .from('user_memories')
-        .select('*')
-        .eq('user_id', 'anonymous')
-        .order('created_at', { ascending: false })
-        .limit(20)
+      try {
+        const { data, error } = await supabase
+          .from('user_memories')
+          .select('*')
+          .eq('user_id', 'anonymous')
+          .order('created_at', { ascending: false })
+          .limit(20)
 
-      if (data) {
-        setMemories(data)
+        if (error) {
+          // Table might not exist yet - this is okay
+          console.warn('Could not load memories:', error.message)
+          return
+        }
+
+        if (data) {
+          setMemories(data)
+        }
+      } catch (err) {
+        console.warn('Error loading memories:', err)
       }
     }
     loadMemories()
@@ -212,13 +240,18 @@ export default function ChatPage() {
       updatedAt: new Date()
     }
     
-    await supabase.from('conversations').insert({
-      id: newConversation.id,
-      title: newConversation.title,
-      user_id: 'anonymous',
-      created_at: newConversation.createdAt.toISOString(),
-      updated_at: newConversation.updatedAt.toISOString()
-    })
+    // Try to save to database, but don't block if it fails
+    try {
+      await supabase.from('conversations').insert({
+        id: newConversation.id,
+        title: newConversation.title,
+        user_id: 'anonymous',
+        created_at: newConversation.createdAt.toISOString(),
+        updated_at: newConversation.updatedAt.toISOString()
+      })
+    } catch (err) {
+      console.warn('Could not save conversation to database:', err)
+    }
 
     setConversations(prev => [newConversation, ...prev])
     setCurrentConversationId(newConversation.id)
@@ -232,7 +265,12 @@ export default function ChatPage() {
   }, [])
 
   const deleteConversation = useCallback(async (conversationId: string) => {
-    await supabase.from('conversations').delete().eq('id', conversationId)
+    // Try to delete from database
+    try {
+      await supabase.from('conversations').delete().eq('id', conversationId)
+    } catch (err) {
+      console.warn('Could not delete conversation from database:', err)
+    }
     
     setConversations(prev => prev.filter(c => c.id !== conversationId))
     
@@ -342,13 +380,20 @@ export default function ChatPage() {
     // Check for remember command
     const rememberContent = parseRememberCommand(messageContent)
     if (rememberContent) {
-      await supabase.from('user_memories').insert({
-        id: crypto.randomUUID(),
-        user_id: 'anonymous',
-        content: rememberContent,
-        created_at: new Date().toISOString()
-      })
-      setMemories(prev => [{ id: crypto.randomUUID(), content: rememberContent, created_at: new Date().toISOString() }, ...prev])
+      const memoryId = crypto.randomUUID()
+      // Try to save to database
+      try {
+        await supabase.from('user_memories').insert({
+          id: memoryId,
+          user_id: 'anonymous',
+          content: rememberContent,
+          created_at: new Date().toISOString()
+        })
+      } catch (err) {
+        console.warn('Could not save memory to database:', err)
+      }
+      
+      setMemories(prev => [{ id: memoryId, content: rememberContent, created_at: new Date().toISOString() }, ...prev])
       setInputMessage('')
       
       // Add confirmation message
@@ -380,15 +425,19 @@ export default function ChatPage() {
       created_at: new Date().toISOString()
     }
 
-    // Save user message to database
-    await supabase.from('messages').insert({
-      id: userMessage.id,
-      conversation_id: currentConversationId,
-      user_id: 'anonymous',
-      role: 'user',
-      content: finalContent,
-      created_at: userMessage.created_at
-    })
+    // Try to save user message to database
+    try {
+      await supabase.from('messages').insert({
+        id: userMessage.id,
+        conversation_id: currentConversationId,
+        user_id: 'anonymous',
+        role: 'user',
+        content: finalContent,
+        created_at: userMessage.created_at
+      })
+    } catch (err) {
+      console.warn('Could not save message to database:', err)
+    }
 
     const newMessages = [...messages, userMessage]
     setMessages(newMessages)
@@ -536,10 +585,15 @@ export default function ChatPage() {
 
   // Handle feedback
   const handleFeedback = useCallback(async (messageId: string, feedback: 'up' | 'down') => {
-    await supabase
-      .from('messages')
-      .update({ feedback })
-      .eq('id', messageId)
+    // Try to save feedback to database
+    try {
+      await supabase
+        .from('messages')
+        .update({ feedback })
+        .eq('id', messageId)
+    } catch (err) {
+      console.warn('Could not save feedback:', err)
+    }
     
     setMessages(prev => prev.map(m => 
       m.id === messageId ? { ...m, feedback } : m
