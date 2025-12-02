@@ -577,6 +577,42 @@ export default function ChatPage() {
       // Clear uploaded files after sending
       setUploadedFiles([])
 
+      // Auto-generate title for new conversations (first message)
+      const currentConv = conversations.find(c => c.id === currentConversationId)
+      if (currentConv && currentConv.title === 'New Chat' && messages.length === 0) {
+        try {
+          const titleResponse = await fetch('/api/generate-title', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: finalContent })
+          })
+          
+          if (titleResponse.ok) {
+            const { title } = await titleResponse.json()
+            if (title) {
+              // Update local state
+              setConversations(prev => prev.map(c => 
+                c.id === currentConversationId 
+                  ? { ...c, title, updatedAt: new Date() }
+                  : c
+              ))
+              
+              // Update in database
+              try {
+                await supabase
+                  .from('conversations')
+                  .update({ title, updated_at: new Date().toISOString() })
+                  .eq('id', currentConversationId)
+              } catch (dbErr) {
+                console.warn('Could not update conversation title in database:', dbErr)
+              }
+            }
+          }
+        } catch (titleErr) {
+          console.warn('Could not generate title:', titleErr)
+        }
+      }
+
     } catch (error) {
       console.error('Error:', error)
       setMessages([...newMessages, {
@@ -588,7 +624,7 @@ export default function ChatPage() {
     } finally {
       setLoading(false)
     }
-  }, [inputMessage, loading, messages, currentConversationId, uploadedFiles, settings, memories])
+  }, [inputMessage, loading, messages, currentConversationId, uploadedFiles, settings, memories, conversations])
 
   // Regenerate response
   const handleRegenerate = useCallback(async (messageIndex: number) => {
