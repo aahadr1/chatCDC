@@ -2,13 +2,48 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, X, Sliders, Brain, MessageSquare, Globe, Zap } from 'lucide-react'
+import { Settings, X, Sliders, Brain, MessageSquare, Globe, Zap, Languages, ChevronDown } from 'lucide-react'
+
+// Available languages
+export const LANGUAGES = [
+  { code: 'auto', name: 'Auto-detect', flag: '🌐' },
+  { code: 'en', name: 'English', flag: '🇬🇧' },
+  { code: 'fr', name: 'Français', flag: '🇫🇷' },
+  { code: 'es', name: 'Español', flag: '🇪🇸' },
+  { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+  { code: 'it', name: 'Italiano', flag: '🇮🇹' },
+  { code: 'pt', name: 'Português', flag: '🇵🇹' },
+  { code: 'nl', name: 'Nederlands', flag: '🇳🇱' },
+  { code: 'ru', name: 'Русский', flag: '🇷🇺' },
+  { code: 'zh', name: '中文', flag: '🇨🇳' },
+  { code: 'ja', name: '日本語', flag: '🇯🇵' },
+  { code: 'ko', name: '한국어', flag: '🇰🇷' },
+  { code: 'ar', name: 'العربية', flag: '🇸🇦' },
+  { code: 'hi', name: 'हिन्दी', flag: '🇮🇳' },
+  { code: 'tr', name: 'Türkçe', flag: '🇹🇷' },
+  { code: 'pl', name: 'Polski', flag: '🇵🇱' },
+  { code: 'uk', name: 'Українська', flag: '🇺🇦' },
+  { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
+  { code: 'th', name: 'ไทย', flag: '🇹🇭' },
+  { code: 'id', name: 'Bahasa Indonesia', flag: '🇮🇩' },
+  { code: 'sv', name: 'Svenska', flag: '🇸🇪' },
+  { code: 'da', name: 'Dansk', flag: '🇩🇰' },
+  { code: 'fi', name: 'Suomi', flag: '🇫🇮' },
+  { code: 'no', name: 'Norsk', flag: '🇳🇴' },
+  { code: 'cs', name: 'Čeština', flag: '🇨🇿' },
+  { code: 'el', name: 'Ελληνικά', flag: '🇬🇷' },
+  { code: 'he', name: 'עברית', flag: '🇮🇱' },
+  { code: 'ro', name: 'Română', flag: '🇷🇴' },
+  { code: 'hu', name: 'Magyar', flag: '🇭🇺' },
+  { code: 'bg', name: 'Български', flag: '🇧🇬' },
+]
 
 export interface ChatSettings {
   verbosity: 'low' | 'medium' | 'high'
   reasoningEffort: 'minimal' | 'low' | 'medium' | 'high'
   enableWebSearch: boolean
   maxTokens: number
+  language: string
 }
 
 interface SettingsPanelProps {
@@ -19,9 +54,13 @@ interface SettingsPanelProps {
 }
 
 export function SettingsPanel({ settings, onSettingsChange, isOpen, onClose }: SettingsPanelProps) {
+  const [languageDropdownOpen, setLanguageDropdownOpen] = useState(false)
+  
   const updateSetting = <K extends keyof ChatSettings>(key: K, value: ChatSettings[K]) => {
     onSettingsChange({ ...settings, [key]: value })
   }
+
+  const selectedLanguage = LANGUAGES.find(l => l.code === settings.language) || LANGUAGES[0]
 
   return (
     <AnimatePresence>
@@ -55,6 +94,64 @@ export function SettingsPanel({ settings, onSettingsChange, isOpen, onClose }: S
             </div>
 
             <div className="p-4 space-y-6">
+              {/* Language Selection */}
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <Languages className="w-4 h-4 text-zinc-500" />
+                  <label className="text-sm font-medium text-zinc-300">Response Language</label>
+                </div>
+                <div className="relative">
+                  <button
+                    onClick={() => setLanguageDropdownOpen(!languageDropdownOpen)}
+                    className="w-full flex items-center justify-between px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-left hover:border-zinc-600 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">{selectedLanguage.flag}</span>
+                      <span className="text-zinc-200">{selectedLanguage.name}</span>
+                    </div>
+                    <ChevronDown className={`w-4 h-4 text-zinc-400 transition-transform ${languageDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  <AnimatePresence>
+                    {languageDropdownOpen && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="absolute z-10 mt-2 w-full bg-zinc-800 border border-zinc-700 rounded-xl shadow-xl max-h-64 overflow-y-auto scrollbar-thin"
+                      >
+                        {LANGUAGES.map((lang) => (
+                          <button
+                            key={lang.code}
+                            onClick={() => {
+                              updateSetting('language', lang.code)
+                              setLanguageDropdownOpen(false)
+                            }}
+                            className={`w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-zinc-700 transition-colors ${
+                              settings.language === lang.code ? 'bg-zinc-700' : ''
+                            }`}
+                          >
+                            <span className="text-lg">{lang.flag}</span>
+                            <span className={settings.language === lang.code ? 'text-white' : 'text-zinc-300'}>
+                              {lang.name}
+                            </span>
+                            {settings.language === lang.code && (
+                              <span className="ml-auto text-white">✓</span>
+                            )}
+                          </button>
+                        ))}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <p className="text-xs text-zinc-500 mt-2">
+                  {settings.language === 'auto' 
+                    ? 'AI will respond in the same language you use'
+                    : `AI will always respond in ${selectedLanguage.name}`
+                  }
+                </p>
+              </div>
+
               {/* Verbosity */}
               <div>
                 <div className="flex items-center gap-2 mb-3">
@@ -164,4 +261,3 @@ export function SettingsPanel({ settings, onSettingsChange, isOpen, onClose }: S
     </AnimatePresence>
   )
 }
-

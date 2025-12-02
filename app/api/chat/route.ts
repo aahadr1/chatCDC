@@ -22,6 +22,9 @@ export async function POST(request: NextRequest) {
 
     // Check if images are being sent
     const hasImages = settings.imageUrls && settings.imageUrls.length > 0
+    
+    // Get language setting
+    const language = settings.language || 'auto'
 
     // Build enhanced system prompt with context
     let systemPrompt = `You are ChatCDC, an advanced AI assistant. You are helpful, knowledgeable, and conversational.
@@ -32,6 +35,46 @@ Key behaviors:
 - Format code blocks with language tags
 - Be concise but thorough
 - If you don't know something, admit it honestly`
+
+    // Add language instruction
+    if (language && language !== 'auto') {
+      const languageNames: Record<string, string> = {
+        'en': 'English',
+        'fr': 'French',
+        'es': 'Spanish',
+        'de': 'German',
+        'it': 'Italian',
+        'pt': 'Portuguese',
+        'nl': 'Dutch',
+        'ru': 'Russian',
+        'zh': 'Chinese',
+        'ja': 'Japanese',
+        'ko': 'Korean',
+        'ar': 'Arabic',
+        'hi': 'Hindi',
+        'tr': 'Turkish',
+        'pl': 'Polish',
+        'uk': 'Ukrainian',
+        'vi': 'Vietnamese',
+        'th': 'Thai',
+        'id': 'Indonesian',
+        'sv': 'Swedish',
+        'da': 'Danish',
+        'fi': 'Finnish',
+        'no': 'Norwegian',
+        'cs': 'Czech',
+        'el': 'Greek',
+        'he': 'Hebrew',
+        'ro': 'Romanian',
+        'hu': 'Hungarian',
+        'bg': 'Bulgarian',
+      }
+      const langName = languageNames[language] || language
+      systemPrompt += `
+
+**IMPORTANT LANGUAGE INSTRUCTION:**
+You MUST respond ONLY in ${langName}. All your responses, explanations, code comments, and any text output must be written in ${langName}. This is a strict requirement - never respond in any other language unless the user explicitly asks you to translate something.`
+    }
 
     // Add OCR/Vision instructions if images are present
     if (hasImages) {

@@ -99,7 +99,8 @@ export default function ChatPage() {
     verbosity: 'medium',
     reasoningEffort: 'medium',
     enableWebSearch: false,
-    maxTokens: 4000
+    maxTokens: 4000,
+    language: 'auto'
   })
 
   const fileInputRef = useRef<HTMLInputElement>(null)
