@@ -314,6 +314,14 @@ export default function AgentPage() {
                   <p className="text-zinc-500 max-w-md mx-auto mb-6">
                     L&apos;agent répond en s&apos;appuyant sur les documents de la base. Questions courtes ou demandes de rapport long.
                   </p>
+                  {documents.length === 0 && (
+                    <div className="max-w-lg mx-auto p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-left">
+                      <p className="text-sm text-amber-200/90 font-medium mb-1">Aucun document dans la base</p>
+                      <p className="text-xs text-zinc-400">
+                        Ajoutez d&apos;abord des PDF, DOCX ou TXT via le panneau <strong>« Base de documents »</strong> à gauche (bouton « Ajouter un document »). L&apos;agent ne utilise pas les fichiers envoyés dans le chat principal — uniquement ceux ajoutés ici.
+                      </p>
+                    </div>
+                  )}
                 </motion.div>
               )}
 

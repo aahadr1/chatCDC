@@ -4,7 +4,7 @@
  */
 
 import { streamGPT5, type ChatMessage } from './replicate'
-import { multiQuerySearch, searchChunks, buildContext, type SearchChunk } from './ragSearch'
+import { multiQuerySearch, searchChunks, buildContext, getChunkCount, getRecentChunks, type SearchChunk } from './ragSearch'
 
 export type SSEEvent =
   | { type: 'status'; phase: 'search' | 'plan' | 'generate'; message?: string; section?: number; total?: number; title?: string }
@@ -102,9 +102,18 @@ export async function* runPipeline(
 
     if (mode === 'quick') {
       yield { type: 'status', phase: 'search', message: 'Recherche dans les documents...' }
-      const chunks = await searchChunks(userMessage, 12)
+      let chunks = await searchChunks(userMessage, 12)
       if (chunks.length === 0) {
-        yield { type: 'status', phase: 'plan', message: 'Aucun extrait trouvé. Réponse générale.' }
+        const totalChunks = await getChunkCount()
+        if (totalChunks === 0) {
+          const emptyMessage =
+            "**Aucun document dans la base.**\n\nPour que je puisse répondre à partir de vos PDF ou documents, il faut d’abord les ajouter à la **Base de documents** (panneau de gauche sur cette page). Cliquez sur « Ajouter un document » et choisissez vos fichiers PDF, DOCX ou TXT. Les documents joints dans le chat principal ne sont pas utilisés ici : seuls les fichiers ajoutés dans ce panneau sont indexés."
+          yield { type: 'content', text: emptyMessage }
+          yield { type: 'done' }
+          return
+        }
+        chunks = await getRecentChunks(12)
+        yield { type: 'status', phase: 'plan', message: 'Aucune correspondance exacte ; utilisation d’extraits généraux de la base.' }
       } else {
         yield { type: 'sources', chunks: chunks.slice(0, 8).map((c) => ({ doc: c.document_name, excerpt: c.content.slice(0, 200) + '...' })) }
       }
