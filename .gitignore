@@ -1,6 +1,7 @@
 node_modules
 .vercel
 .next
+.DS_Store
 .next/cache
 .next/static
 .next/server

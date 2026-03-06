@@ -152,3 +152,5 @@ export function getPromptFromCommand(command: string): string | null {
   return commandMap[command] || null
 }
 
+
+

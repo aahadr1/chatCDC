@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use a fast model to generate a short title
-    const output = await replicate.run(
+    const output: unknown = await replicate.run(
       "meta/meta-llama-3-8b-instruct" as `${string}/${string}`,
       {
         input: {
@@ -29,7 +29,6 @@ Title:`,
       }
     )
 
-    // Handle the output
     let title = ''
     if (Array.isArray(output)) {
       title = output.join('').trim()
@@ -72,4 +71,6 @@ Title:`,
     }
   }
 }
+
+
 
