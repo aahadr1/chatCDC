@@ -7,8 +7,9 @@ import {
   MessageCircle, Plus, Trash2, Upload, Send, Settings, 
   PanelLeftClose, PanelLeft, Search, MoreHorizontal,
   Sparkles, Image, FileText, X, ChevronDown, Globe,
-  Brain, Keyboard, Moon, Sun, Zap, LogOut, User
+  Brain, Keyboard, Moon, Sun, Zap, LogOut, User, Landmark
 } from 'lucide-react'
+import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
 import { useAuth } from '@/contexts/AuthContext'
 import { MessageBubble } from '@/components/chat/MessageBubble'
@@ -847,6 +848,14 @@ export default function ChatPage() {
                 <Settings className="w-4 h-4" />
                 Settings
               </button>
+
+              <Link
+                href="/agent"
+                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <Landmark className="w-4 h-4" />
+                CDC Agent
+              </Link>
               
               <button
                 onClick={handleLogout}
