@@ -1,5 +1,5 @@
 /**
- * CDC Agent: full-text search over cdc_chunks and context building for the LLM.
+ * Document agent: full-text search over cdc_chunks and context building for the LLM.
  */
 
 import { supabase } from './supabaseClient'
@@ -106,5 +106,5 @@ export function buildContext(chunks: SearchChunk[]): string {
   const parts = chunks.map((c, i) => {
     return `### Extrait ${i + 1} (source: ${c.document_name})\n${c.content}`
   })
-  return '\n---\n## EXTRAITS DE DOCUMENTS (base de connaissances CDC)\n\n' + parts.join('\n\n') + '\n---\n'
+  return '\n---\n## EXTRAITS DE DOCUMENTS\n\n' + parts.join('\n\n') + '\n---\n'
 }

@@ -1,5 +1,5 @@
 /**
- * CDC Agent: extract text from PDF/DOCX/TXT and chunk for full-text search.
+ * Document processor: extract text from PDF/DOCX/TXT and chunk for full-text search.
  * Chunks ~1500 chars with ~300 char overlap, paragraph-aware.
  */
 

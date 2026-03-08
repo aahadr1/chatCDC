@@ -7,7 +7,7 @@ import {
   MessageCircle, Plus, Trash2, Upload, Send, Settings, 
   PanelLeftClose, PanelLeft, Search, MoreHorizontal,
   Sparkles, Image, FileText, X, ChevronDown, Globe,
-  Brain, Keyboard, Moon, Sun, Zap, LogOut, User, Landmark
+  Brain, Keyboard, Moon, Sun, Zap, LogOut, User
 } from 'lucide-react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabaseClient'
@@ -760,7 +760,7 @@ export default function ChatPage() {
                   <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
                     <Zap className="w-4 h-4 text-zinc-900" />
                   </div>
-                  <span className="font-semibold text-zinc-100">ChatCDC</span>
+                  <span className="font-semibold text-zinc-100">Chat</span>
                 </div>
                 <button
                   onClick={() => setSidebarOpen(false)}
@@ -853,8 +853,8 @@ export default function ChatPage() {
                 href="/agent"
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition-colors"
               >
-                <Landmark className="w-4 h-4" />
-                CDC Agent
+                <FileText className="w-4 h-4" />
+                Assistant Documents
               </Link>
               
               <button
@@ -1086,7 +1086,7 @@ export default function ChatPage() {
                       handleSendMessage()
                     }
                   }}
-                  placeholder="Message ChatCDC... (/ for commands)"
+                  placeholder="Envoyer un message... (/ pour les commandes)"
                   rows={1}
                   className="flex-1 bg-transparent text-zinc-100 placeholder:text-zinc-500 focus:outline-none resize-none min-h-[24px] max-h-32"
                   style={{ height: 'auto' }}

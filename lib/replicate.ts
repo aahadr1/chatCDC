@@ -75,7 +75,7 @@ export async function* streamGPT5(
       name: "openai/gpt-5" as ReplicateModelId,
       input: {
         messages: formattedMessages,
-        system_prompt: options.system_prompt || 'You are ChatCDC, an advanced AI assistant. Provide clear, helpful, and accurate responses. Use markdown formatting when appropriate.',
+        system_prompt: options.system_prompt || 'You are a helpful AI assistant. Provide clear, accurate responses. Use markdown formatting when appropriate.',
         reasoning_effort: options.reasoning_effort || 'medium',
         verbosity: options.verbosity || 'medium',
         max_completion_tokens: options.max_completion_tokens || 4096,
@@ -87,7 +87,7 @@ export async function* streamGPT5(
       name: "openai/gpt-4o-mini" as ReplicateModelId,
       input: {
         messages: formattedMessages,
-        system_prompt: options.system_prompt || 'You are ChatCDC, an advanced AI assistant. Provide clear, helpful, and accurate responses. Use markdown formatting when appropriate.',
+        system_prompt: options.system_prompt || 'You are a helpful AI assistant. Provide clear, accurate responses. Use markdown formatting when appropriate.',
         max_completion_tokens: options.max_completion_tokens || 4096,
         temperature: 0.7,
         top_p: 1,
@@ -99,7 +99,7 @@ export async function* streamGPT5(
       name: "meta/meta-llama-3-70b-instruct" as ReplicateModelId,
       input: {
         prompt: promptFromMessages,
-        system_prompt: options.system_prompt || 'You are ChatCDC, an advanced AI assistant.',
+        system_prompt: options.system_prompt || 'You are a helpful AI assistant.',
         max_tokens: Math.min(options.max_completion_tokens || 2048, 2048),
         temperature: 0.7,
       },

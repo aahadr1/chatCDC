@@ -72,7 +72,7 @@ export default function SignupPage() {
             <Zap className="w-8 h-8 text-zinc-900" />
           </div>
           <h1 className="text-2xl font-bold text-white">Create an account</h1>
-          <p className="text-zinc-400 mt-2">Start chatting with ChatCDC</p>
+          <p className="text-zinc-400 mt-2">Créez votre compte pour commencer</p>
         </div>
 
         {/* Form */}

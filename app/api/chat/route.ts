@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const language = settings.language || 'auto'
 
     // Build enhanced system prompt with context
-    let systemPrompt = `You are ChatCDC, an advanced AI assistant. You are helpful, knowledgeable, and conversational.
+    let systemPrompt = `You are a helpful AI assistant. You are knowledgeable and conversational.
 
 Key behaviors:
 - Provide clear, accurate, and helpful responses

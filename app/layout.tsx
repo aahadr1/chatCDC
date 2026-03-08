@@ -4,8 +4,8 @@ import { ToastProvider } from '@/components/ui/Toast'
 import { AuthProvider } from '@/contexts/AuthContext'
 
 export const metadata: Metadata = {
-  title: 'ChatCDC - AI Assistant',
-  description: 'Advanced AI chat assistant with file processing, memory, and more',
+  title: 'Chat — Assistant IA',
+  description: 'Assistant IA avec traitement de fichiers, mémoire et plus',
 }
 
 export default function RootLayout({

@@ -69,7 +69,7 @@ export default function LoginPage() {
             <Zap className="w-8 h-8 text-zinc-900" />
           </div>
           <h1 className="text-2xl font-bold text-white">Welcome back</h1>
-          <p className="text-zinc-400 mt-2">Sign in to continue to ChatCDC</p>
+          <p className="text-zinc-400 mt-2">Connectez-vous pour continuer</p>
         </div>
 
         {/* Form */}

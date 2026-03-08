@@ -1,5 +1,5 @@
 /**
- * CDC Agent: orchestrates quick vs deep mode, search, outline, and section-by-section generation.
+ * Document agent pipeline: orchestrates quick vs deep mode, search, outline, and section-by-section generation.
  * Yields SSE-shaped events for the API route to stream.
  */
 
@@ -15,7 +15,7 @@ export type SSEEvent =
   | { type: 'error'; message: string }
 
 const QUICK_SYSTEM =
-  'Tu es l\'Agent CDC, un assistant expert sur la Caisse des Dépôts et Consignations. Réponds aux questions en te basant UNIQUEMENT sur les extraits de documents fournis. Réponds toujours en français. Cite le nom du document source quand c\'est possible. Si l\'information n\'est pas dans les documents, dis-le honnêtement.'
+  'Tu es un assistant documentaire. Réponds aux questions en te basant UNIQUEMENT sur les extraits de documents fournis. Réponds toujours en français. Cite le nom du document source quand c\'est possible. Si l\'information n\'est pas dans les documents, dis-le honnêtement.'
 
 const DEEP_KEYWORDS = [
   'rapport', 'analyse détaillée', 'analyse detaillee', 'synthèse', 'synthese',
@@ -34,13 +34,13 @@ function classifyRequestFast(userMessage: string): 'quick' | 'deep' {
 }
 
 const EXPAND_QUERIES_SYSTEM =
-  'À partir de la question ou demande de l\'utilisateur, génère 4 à 6 requêtes de recherche courtes en français pour trouver les passages pertinents dans une base de documents sur la Caisse des Dépôts. Une requête par ligne, pas de numérotation.'
+  'À partir de la question ou demande de l\'utilisateur, génère 4 à 6 requêtes de recherche courtes en français pour trouver les passages pertinents dans une base de documents. Une requête par ligne, pas de numérotation.'
 
 const OUTLINE_SYSTEM =
   'À partir de la demande de l\'utilisateur et des extraits de documents fournis, génère un plan structuré détaillé (titres de sections) pour un document complet. Chaque section doit couvrir un aspect précis. Réponds en JSON valide uniquement, avec ce format: {"sections":[{"title":"...","description":"...","search_queries":["..."]}]}. Pas de texte avant ou après le JSON.'
 
 const SECTION_SYSTEM_PREFIX =
-  'Tu rédiges la section "{{title}}" d\'un rapport sur la Caisse des Dépôts. Base-toi UNIQUEMENT sur les extraits fournis. Sois exhaustif, détaillé et professionnel. Cite tes sources (nom du document). Écris au moins {{min_chars}} caractères pour cette section. Réponds en français.'
+  'Tu rédiges la section "{{title}}" d\'un rapport. Base-toi UNIQUEMENT sur les extraits fournis. Sois exhaustif, détaillé et professionnel. Cite tes sources (nom du document). Écris au moins {{min_chars}} caractères pour cette section. Réponds en français.'
 
 async function completePrompt(
   messages: ChatMessage[],
@@ -116,7 +116,7 @@ export async function* runPipeline(
         const totalChunks = await getChunkCount()
         if (totalChunks === 0) {
           const emptyMessage =
-            "**Aucun document dans la base.**\n\nPour que je puisse répondre à partir de vos PDF ou documents, il faut d’abord les ajouter à la **Base de documents** (panneau de gauche sur cette page). Cliquez sur « Ajouter un document » et choisissez vos fichiers PDF, DOCX ou TXT. Les documents joints dans le chat principal ne sont pas utilisés ici : seuls les fichiers ajoutés dans ce panneau sont indexés."
+            "**Aucun document dans la base.**\n\nAjoutez vos fichiers via le panneau **« Base de documents »** à gauche. Formats acceptés : PDF, DOCX, TXT, MD, CSV, JSON."
           yield { type: 'content', text: emptyMessage }
           yield { type: 'done' }
           return

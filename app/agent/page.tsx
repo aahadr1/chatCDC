@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Landmark,
+  BookOpen,
   Send,
   MessageCircle,
   FileText,
@@ -252,11 +252,11 @@ export default function AgentPage() {
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="w-10 h-10 bg-zinc-800 border border-zinc-700 rounded-xl flex items-center justify-center">
-            <Landmark className="w-5 h-5 text-zinc-300" />
+            <BookOpen className="w-5 h-5 text-zinc-300" />
           </div>
           <div>
-            <h1 className="text-lg font-semibold text-zinc-100">CDC Agent</h1>
-            <p className="text-xs text-zinc-500">Réponses basées sur la base de documents</p>
+            <h1 className="text-lg font-semibold text-zinc-100">Assistant Documents</h1>
+            <p className="text-xs text-zinc-500">Réponses basées sur vos documents</p>
           </div>
         </div>
       </header>
@@ -336,17 +336,17 @@ export default function AgentPage() {
                   className="text-center py-20"
                 >
                   <div className="w-16 h-16 bg-zinc-800 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-zinc-700">
-                    <Landmark className="w-8 h-8 text-zinc-400" />
+                    <BookOpen className="w-8 h-8 text-zinc-400" />
                   </div>
                   <h2 className="text-xl font-semibold text-zinc-100 mb-2">Posez votre question</h2>
                   <p className="text-zinc-500 max-w-md mx-auto mb-6">
-                    L&apos;agent répond en s&apos;appuyant sur les documents de la base. Questions courtes ou demandes de rapport long.
+                    Les réponses s&apos;appuient uniquement sur les documents que vous avez ajoutés. Questions courtes ou rapports détaillés.
                   </p>
                   {documents.length === 0 && (
                     <div className="max-w-lg mx-auto p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-left">
                       <p className="text-sm text-amber-200/90 font-medium mb-1">Aucun document dans la base</p>
                       <p className="text-xs text-zinc-400">
-                        Ajoutez d&apos;abord des PDF, DOCX ou TXT via le panneau <strong>« Base de documents »</strong> à gauche (bouton « Ajouter un document »). L&apos;agent ne utilise pas les fichiers envoyés dans le chat principal — uniquement ceux ajoutés ici.
+                        Ajoutez vos fichiers PDF, DOCX ou TXT via le panneau <strong>« Base de documents »</strong> à gauche. Seuls les documents ajoutés ici sont utilisés pour les réponses.
                       </p>
                     </div>
                   )}
