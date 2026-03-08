@@ -79,10 +79,13 @@ export async function multiQuerySearch(
   limitPerQuery: number = 12,
   totalLimit: number = 50
 ): Promise<SearchChunk[]> {
+  const validQueries = queries.filter(q => q.trim())
+  const allResults = await Promise.all(
+    validQueries.map(q => searchChunks(q.trim(), limitPerQuery))
+  )
+
   const seen = new Map<string, SearchChunk>()
-  for (const q of queries) {
-    if (!q.trim()) continue
-    const results = await searchChunks(q.trim(), limitPerQuery)
+  for (const results of allResults) {
     for (const row of results) {
       const existing = seen.get(row.id)
       if (!existing || row.rank > existing.rank) {

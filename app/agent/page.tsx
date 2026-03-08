@@ -83,25 +83,50 @@ export default function AgentPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingContent, sectionProgress, outlineSections])
 
+  const [uploadProgress, setUploadProgress] = useState<{ done: number; total: number } | null>(null)
+
   const handleUpload = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
-      if (!file) return
+      const files = e.target.files
+      if (!files || files.length === 0) return
       setUploadError(null)
       setUploading(true)
-      try {
+      setUploadProgress({ done: 0, total: files.length })
+
+      const uploadOne = async (file: File): Promise<DocItem> => {
         const form = new FormData()
         form.append('file', file)
         const res = await fetch('/api/agent/documents', { method: 'POST', body: form })
         const data = await res.json()
-        if (!res.ok) throw new Error(data.error || 'Upload failed')
-        setDocuments((prev) => [data.document, ...prev])
-      } catch (err) {
-        setUploadError(err instanceof Error ? err.message : 'Upload failed')
-      } finally {
-        setUploading(false)
-        e.target.value = ''
+        if (!res.ok) throw new Error(data.error || `Échec : ${file.name}`)
+        return data.document as DocItem
       }
+
+      const results = await Promise.allSettled(
+        Array.from(files).map(async (file) => {
+          const doc = await uploadOne(file)
+          setUploadProgress((prev) => prev ? { ...prev, done: prev.done + 1 } : null)
+          return doc
+        })
+      )
+
+      const succeeded = results
+        .filter((r): r is PromiseFulfilledResult<DocItem> => r.status === 'fulfilled')
+        .map((r) => r.value)
+      const failed = results
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map((r) => (r.reason as Error)?.message || 'Échec')
+
+      if (succeeded.length > 0) {
+        setDocuments((prev) => [...succeeded, ...prev])
+      }
+      if (failed.length > 0) {
+        setUploadError(`${failed.length} fichier(s) échoué(s) : ${failed.join(' | ')}`)
+      }
+
+      setUploading(false)
+      setUploadProgress(null)
+      e.target.value = ''
     },
     []
   )
@@ -260,9 +285,12 @@ export default function AgentPage() {
                 <div className="px-3 pb-2">
                   <label className="flex items-center justify-center gap-2 px-3 py-2 bg-zinc-800 border border-zinc-700 rounded-lg cursor-pointer hover:bg-zinc-700 transition-colors text-sm text-zinc-300">
                     <Upload className="w-4 h-4" />
-                    {uploading ? 'Envoi...' : 'Ajouter un document'}
+                    {uploading && uploadProgress
+                      ? `Envoi ${uploadProgress.done}/${uploadProgress.total}...`
+                      : 'Ajouter des documents'}
                     <input
                       type="file"
+                      multiple
                       accept=".pdf,.docx,.txt,.md,.csv,.json"
                       className="hidden"
                       onChange={handleUpload}

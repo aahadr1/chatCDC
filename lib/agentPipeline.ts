@@ -17,8 +17,21 @@ export type SSEEvent =
 const QUICK_SYSTEM =
   'Tu es l\'Agent CDC, un assistant expert sur la Caisse des Dépôts et Consignations. Réponds aux questions en te basant UNIQUEMENT sur les extraits de documents fournis. Réponds toujours en français. Cite le nom du document source quand c\'est possible. Si l\'information n\'est pas dans les documents, dis-le honnêtement.'
 
-const CLASSIFY_SYSTEM =
-  'Tu dois classifier la demande utilisateur. Réponds par exactement un seul mot: "quick" si c\'est une question courte (fait, chiffre, définition), ou "deep" si l\'utilisateur demande un rapport, une analyse longue, une synthèse multi-documents, ou un document de plus d\'une page. Réponds uniquement: quick ou deep.'
+const DEEP_KEYWORDS = [
+  'rapport', 'analyse détaillée', 'analyse detaillee', 'synthèse', 'synthese',
+  'compare', 'comparer', 'document complet', 'résume tout', 'resume tout',
+  'multi-documents', 'exhaustif', 'rédige un', 'redige un', 'note de synthèse',
+  'note de synthese', 'récapitulatif', 'recapitulatif', 'dossier complet',
+  'présentation complète', 'presentation complete', 'état des lieux',
+  'etat des lieux', 'bilan complet', 'étude complète', 'etude complete',
+  'analyse approfondie', 'rapport complet', 'fais-moi un rapport',
+  'fais moi un rapport', 'rédige moi', 'redige moi',
+]
+
+function classifyRequestFast(userMessage: string): 'quick' | 'deep' {
+  const lower = userMessage.toLowerCase()
+  return DEEP_KEYWORDS.some(kw => lower.includes(kw)) ? 'deep' : 'quick'
+}
 
 const EXPAND_QUERIES_SYSTEM =
   'À partir de la question ou demande de l\'utilisateur, génère 4 à 6 requêtes de recherche courtes en français pour trouver les passages pertinents dans une base de documents sur la Caisse des Dépôts. Une requête par ligne, pas de numérotation.'
@@ -32,18 +45,26 @@ const SECTION_SYSTEM_PREFIX =
 async function completePrompt(
   messages: ChatMessage[],
   systemPrompt: string,
-  maxTokens: number = 1024
+  maxTokens: number = 1024,
+  timeoutMs: number = 12000
 ): Promise<string> {
   let full = ''
-  for await (const chunk of streamGPT5(messages, {
-    system_prompt: systemPrompt,
-    max_completion_tokens: maxTokens,
-    verbosity: 'low',
-    reasoning_effort: 'minimal',
-  })) {
-    full += chunk
-  }
-  return full.trim()
+  const streamPromise = (async () => {
+    for await (const chunk of streamGPT5(messages, {
+      system_prompt: systemPrompt,
+      max_completion_tokens: maxTokens,
+      verbosity: 'low',
+      reasoning_effort: 'minimal',
+    })) {
+      full += chunk
+    }
+    return full.trim()
+  })()
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('LLM helper call timed out')), timeoutMs)
+  )
+  return Promise.race([streamPromise, timeoutPromise])
 }
 
 function parseOutlineJson(raw: string): { title: string; description?: string; search_queries?: string[] }[] {
@@ -72,18 +93,6 @@ async function expandToSearchQueries(userMessage: string): Promise<string[]> {
   return lines.slice(0, 6)
 }
 
-/**
- * Classify request as quick (short answer) or deep (long report).
- */
-async function classifyRequest(userMessage: string): Promise<'quick' | 'deep'> {
-  const out = await completePrompt(
-    [{ role: 'user', content: userMessage }],
-    CLASSIFY_SYSTEM,
-    20
-  )
-  return out.toLowerCase().includes('deep') ? 'deep' : 'quick'
-}
-
 export interface PipelineOptions {
   forceDeep?: boolean
 }
@@ -98,7 +107,7 @@ export async function* runPipeline(
   const forceDeep = options.forceDeep === true
 
   try {
-    const mode = forceDeep ? 'deep' : await classifyRequest(userMessage)
+    const mode = forceDeep ? 'deep' : classifyRequestFast(userMessage)
 
     if (mode === 'quick') {
       yield { type: 'status', phase: 'search', message: 'Recherche dans les documents...' }
@@ -125,7 +134,7 @@ export async function* runPipeline(
         system_prompt: QUICK_SYSTEM,
         max_completion_tokens: 4096,
         verbosity: 'medium',
-        reasoning_effort: 'medium',
+        reasoning_effort: 'low',
       })) {
         yield { type: 'content', text: token }
       }
@@ -192,7 +201,7 @@ export async function* runPipeline(
         system_prompt: systemSection,
         max_completion_tokens: 8000,
         verbosity: 'high',
-        reasoning_effort: 'medium',
+        reasoning_effort: 'low',
       })) {
         yield { type: 'content', text: token }
       }
