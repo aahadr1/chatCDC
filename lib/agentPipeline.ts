@@ -46,7 +46,7 @@ async function completePrompt(
   messages: ChatMessage[],
   systemPrompt: string,
   maxTokens: number = 1024,
-  timeoutMs: number = 12000
+  timeoutMs: number = 300_000
 ): Promise<string> {
   let full = ''
   const streamPromise = (async () => {

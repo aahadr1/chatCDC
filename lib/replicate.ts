@@ -40,8 +40,8 @@ interface ModelConfig {
   description: string
 }
 
-const FIRST_TOKEN_TIMEOUT_MS = 15_000
-const BETWEEN_TOKEN_TIMEOUT_MS = 10_000
+const FIRST_TOKEN_TIMEOUT_MS = 300_000
+const BETWEEN_TOKEN_TIMEOUT_MS = 300_000
 
 function raceTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
