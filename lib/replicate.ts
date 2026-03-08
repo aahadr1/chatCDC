@@ -4,7 +4,6 @@ const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN!,
 })
 
-// Type for Replicate model identifiers
 type ReplicateModelId = `${string}/${string}` | `${string}/${string}:${string}`
 
 export interface ChatMessage {
@@ -12,26 +11,15 @@ export interface ChatMessage {
   content: string
 }
 
-export interface GPT5Response {
-  text: string
-  reasoning?: string
-}
+export type ModelTier = 'primary' | 'fast'
 
-export interface GPT5StreamOptions {
-  /** Control model's reasoning depth - minimal, low, medium, high */
+export interface LLMStreamOptions {
   reasoning_effort?: 'minimal' | 'low' | 'medium' | 'high'
-  
-  /** Control response verbosity - low, medium, high */
   verbosity?: 'low' | 'medium' | 'high'
-  
-  /** Maximum number of completion tokens to generate */
   max_completion_tokens?: number
-  
-  /** Custom system prompt to guide model behavior */
   system_prompt?: string
-  
-  /** Optional image inputs for multimodal tasks */
   image_input?: string[]
+  model_tier?: ModelTier
 }
 
 interface ModelConfig {
@@ -52,64 +40,114 @@ function raceTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ])
 }
 
-export async function* streamGPT5(
-  messages: ChatMessage[],
-  options: GPT5StreamOptions = {}
-): AsyncGenerator<string, void, unknown> {
-  console.log('GPT-5 Stream Initiated', {
-    messageCount: messages.length,
-    apiTokenAvailable: !!process.env.REPLICATE_API_TOKEN
-  })
+function buildModelList(
+  messages: { role: string; content: string }[],
+  promptFromMessages: string,
+  options: LLMStreamOptions
+): ModelConfig[] {
+  const sys =
+    options.system_prompt ||
+    'You are a helpful AI assistant. Provide clear, accurate responses. Use markdown formatting when appropriate.'
 
-  const formattedMessages = messages.map(msg => ({
-    role: msg.role,
-    content: msg.content
-  }))
+  const tier = options.model_tier || 'primary'
 
-  const promptFromMessages = formattedMessages
-    .map(m => `${m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : 'System'}: ${m.content}`)
-    .join('\n\n') + '\n\nAssistant:'
-
-  const modelFallbackList: ModelConfig[] = [
+  const primary: ModelConfig[] = [
     {
-      name: "openai/gpt-5" as ReplicateModelId,
+      name: 'openai/gpt-4.1' as ReplicateModelId,
       input: {
-        messages: formattedMessages,
-        system_prompt: options.system_prompt || 'You are a helpful AI assistant. Provide clear, accurate responses. Use markdown formatting when appropriate.',
+        messages,
+        system_prompt: sys,
         reasoning_effort: options.reasoning_effort || 'medium',
         verbosity: options.verbosity || 'medium',
-        max_completion_tokens: options.max_completion_tokens || 4096,
+        max_completion_tokens: options.max_completion_tokens || 8192,
         image_input: options.image_input || [],
       },
-      description: "GPT-5"
+      description: 'GPT-4.1',
     },
     {
-      name: "openai/gpt-4o-mini" as ReplicateModelId,
+      name: 'openai/gpt-4.1-mini' as ReplicateModelId,
       input: {
-        messages: formattedMessages,
-        system_prompt: options.system_prompt || 'You are a helpful AI assistant. Provide clear, accurate responses. Use markdown formatting when appropriate.',
+        messages,
+        system_prompt: sys,
+        max_completion_tokens: options.max_completion_tokens || 8192,
+        image_input: options.image_input || [],
+      },
+      description: 'GPT-4.1-mini',
+    },
+    {
+      name: 'openai/gpt-4o-mini' as ReplicateModelId,
+      input: {
+        messages,
+        system_prompt: sys,
         max_completion_tokens: options.max_completion_tokens || 4096,
         temperature: 0.7,
         top_p: 1,
         image_input: options.image_input || [],
       },
-      description: "GPT-4o-mini"
-    },
-    {
-      name: "meta/meta-llama-3-70b-instruct" as ReplicateModelId,
-      input: {
-        prompt: promptFromMessages,
-        system_prompt: options.system_prompt || 'You are a helpful AI assistant.',
-        max_tokens: Math.min(options.max_completion_tokens || 2048, 2048),
-        temperature: 0.7,
-      },
-      description: "Llama 3 70B"
+      description: 'GPT-4o-mini',
     },
   ]
 
-  for (const model of modelFallbackList) {
+  const fast: ModelConfig[] = [
+    {
+      name: 'openai/gpt-4.1-mini' as ReplicateModelId,
+      input: {
+        messages,
+        system_prompt: sys,
+        max_completion_tokens: options.max_completion_tokens || 4096,
+        image_input: options.image_input || [],
+      },
+      description: 'GPT-4.1-mini',
+    },
+    {
+      name: 'openai/gpt-4o-mini' as ReplicateModelId,
+      input: {
+        messages,
+        system_prompt: sys,
+        max_completion_tokens: options.max_completion_tokens || 4096,
+        temperature: 0.7,
+        top_p: 1,
+        image_input: options.image_input || [],
+      },
+      description: 'GPT-4o-mini',
+    },
+    {
+      name: 'meta/meta-llama-3-70b-instruct' as ReplicateModelId,
+      input: {
+        prompt: promptFromMessages,
+        system_prompt: sys,
+        max_tokens: Math.min(options.max_completion_tokens || 2048, 2048),
+        temperature: 0.7,
+      },
+      description: 'Llama 3 70B',
+    },
+  ]
+
+  return tier === 'fast' ? fast : primary
+}
+
+export async function* streamLLM(
+  messages: ChatMessage[],
+  options: LLMStreamOptions = {}
+): AsyncGenerator<string, void, unknown> {
+  const formattedMessages = messages.map((msg) => ({
+    role: msg.role,
+    content: msg.content,
+  }))
+
+  const promptFromMessages =
+    formattedMessages
+      .map(
+        (m) =>
+          `${m.role === 'user' ? 'User' : m.role === 'assistant' ? 'Assistant' : 'System'}: ${m.content}`
+      )
+      .join('\n\n') + '\n\nAssistant:'
+
+  const modelList = buildModelList(formattedMessages, promptFromMessages, options)
+
+  for (const model of modelList) {
     try {
-      console.log(`Attempting model: ${model.name} - ${model.description}`)
+      console.log(`Attempting model: ${model.name} (${model.description})`)
 
       const stream = replicate.stream(model.name, { input: model.input })
       const iterator = (stream as AsyncIterable<unknown>)[Symbol.asyncIterator]()
@@ -120,10 +158,16 @@ export async function* streamGPT5(
         const timeoutMs = isFirstToken ? FIRST_TOKEN_TIMEOUT_MS : BETWEEN_TOKEN_TIMEOUT_MS
         let result: IteratorResult<unknown>
         try {
-          result = await raceTimeout(iterator.next(), timeoutMs, isFirstToken ? 'first-token' : 'stream')
-        } catch (timeoutErr) {
+          result = await raceTimeout(
+            iterator.next(),
+            timeoutMs,
+            isFirstToken ? 'first-token' : 'stream'
+          )
+        } catch {
           console.warn(`${model.name} timed out (${isFirstToken ? 'first token' : 'between tokens'})`)
-          try { await (iterator.return as (() => Promise<unknown>))?.() } catch {}
+          try {
+            await (iterator.return as (() => Promise<unknown>))?.()
+          } catch {}
           break
         }
 
@@ -134,11 +178,9 @@ export async function* streamGPT5(
         if (typeof event === 'string') {
           token = event
         } else if (event && typeof event === 'object') {
-          if ('data' in event && typeof (event as Record<string, unknown>).data === 'string') {
-            token = (event as Record<string, unknown>).data as string
-          } else if ('content' in event && typeof (event as Record<string, unknown>).content === 'string') {
-            token = (event as Record<string, unknown>).content as string
-          }
+          const rec = event as Record<string, unknown>
+          if ('data' in rec && typeof rec.data === 'string') token = rec.data
+          else if ('content' in rec && typeof rec.content === 'string') token = rec.content
         }
 
         if (token !== null) {
@@ -160,5 +202,8 @@ export async function* streamGPT5(
 
   yield "Désolé, les modèles sont temporairement indisponibles. Veuillez réessayer dans un instant."
 }
+
+// Keep backward-compatible alias
+export const streamGPT5 = streamLLM
 
 export default replicate

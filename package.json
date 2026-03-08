@@ -17,6 +17,7 @@
     "@types/react-dom": "^18",
     "@types/uuid": "^9.0.7",
     "autoprefixer": "^10.4.16",
+    "duck-duck-scrape": "^2.2.7",
     "framer-motion": "^10.16.16",
     "lucide-react": "^0.294.0",
     "mammoth": "^1.11.0",
